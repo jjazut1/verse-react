@@ -1,0 +1,119 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isTeacher() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
+    }
+    
+    function recentHighScores() {
+      let recentScores = getAfter(/databases/$(database)/documents/highScores)
+        .where('playerName', '==', request.resource.data.playerName)
+        .where('createdAt', '>', timestamp.date(date.now().toMillis() - duration.value(5, 'm')));
+      return recentScores.size() < 5;
+    }
+
+    function isValidScore(score) {
+      // Adjust max score based on your game's rules
+      let maxPossibleScore = 1000;
+      return score >= 0 && score <= maxPossibleScore;
+    }
+
+    function isValidPlayerName(name) {
+      // Only allow alphanumeric characters and spaces
+      let nameRegex = "[A-Za-z0-9\\s]+";
+      return name.matches(nameRegex);
+    }
+    
+    // Games collection
+    match /games/{gameId} {
+      allow read: if true; // Anyone can read games
+      allow create, update, delete: if isTeacher(); // Only teachers can modify games
+    }
+    
+    // Game configurations collection (admin only)
+    match /gameConfigs/{configId} {
+      allow read: if true;  // Anyone can read configs
+      allow write: if false;  // Only admin can write (via Admin SDK)
+    }
+    
+    // User-created game configurations
+    match /userGameConfigs/{configId} {
+      allow read: if true;
+      allow create: if 
+        isAuthenticated() &&
+        // Validate required fields
+        request.resource.data.type == 'sort-categories-egg' &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.eggQty is number &&
+        request.resource.data.eggQty > 0 &&
+        request.resource.data.categories is list &&
+        request.resource.data.categories.size() > 0 &&
+        // Validate categories structure
+        request.resource.data.categories.hasAll([{
+          'name': string,
+          'items': list
+        }]) &&
+        // Validate user fields
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.share is bool &&
+        // Optional fields
+        (!('email' in request.resource.data) || request.resource.data.email is string) &&
+        request.resource.data.createdAt is timestamp;
+      
+      allow update, delete: if 
+        isAuthenticated() &&
+        request.auth.uid == resource.data.userId;
+    }
+    
+    // High scores collection
+    match /highScores/{scoreId} {
+      allow read: if true;  // Anyone can read high scores
+      allow create: if 
+        // Basic data validation
+        request.resource.data.playerName is string &&
+        request.resource.data.playerName.size() >= 3 &&
+        request.resource.data.playerName.size() <= 12 &&
+        isValidPlayerName(request.resource.data.playerName) &&
+        request.resource.data.score is number &&
+        isValidScore(request.resource.data.score) &&
+        request.resource.data.configId is string &&
+        request.resource.data.createdAt is timestamp &&
+        // Rate limiting and validation
+        recentHighScores() &&
+        // Validate configId exists
+        exists(/databases/$(database)/documents/userGameConfigs/$(request.resource.data.configId));
+      allow update, delete: if false;  // No one can modify or delete high scores
+    }
+    
+    // Assignments collection
+    match /assignments/{assignmentId} {
+      allow read: if isAuthenticated(); // Only authenticated users can read assignments
+      allow create, update, delete: if isTeacher(); // Only teachers can modify assignments
+    }
+    
+    // Teachers collection
+    match /teachers/{teacherId} {
+      allow read: if true; // Anyone can read teacher profiles
+      allow write: if false; // No one can modify teacher profiles directly (use admin SDK)
+    }
+    
+    // Sort Categories Egg collection
+    match /sortCategoriesEgg/{configId} {
+      allow read: if true; // Anyone can read configurations
+      allow create, update, delete: if true; // Anyone can modify configurations
+    }
+
+    // Blank Game Templates collection
+    match /blankGameTemplates/{templateId} {
+      allow read: if true;  // Anyone can read blank templates
+      allow write: if false;  // Only admin can write (via Admin SDK)
+    }
+  }
+} 
