@@ -1,0 +1,237 @@
+/* SlateEditor.css - Apple-style design */
+.slate-editor-container {
+  position: relative;
+  margin-bottom: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.slate-editor {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+  padding: 12px;
+  min-height: 120px;
+  outline: none;
+  overflow: auto;
+  transition: all 0.2s ease;
+}
+
+.slate-editor:focus {
+  border-color: #007AFF;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
+.slate-editor-container.compact .slate-editor {
+  min-height: 60px;
+}
+
+/* New integrated toolbar layout */
+.slate-editor-with-toolbar {
+  display: flex;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #f8f9fa;
+  transition: all 0.25s ease;
+}
+
+/* Enhanced focus state for the entire editor with toolbar */
+.slate-editor-with-toolbar:focus-within {
+  border-color: #007AFF;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25);
+  background-color: #ffffff;
+}
+
+.inline-toolbar {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Toolbar visibility states */
+.inline-toolbar.hidden {
+  opacity: 0.001;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.inline-toolbar.visible {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+/* Always visible toolbar */
+.inline-toolbar.always-visible {
+  opacity: 1 !important; /* Force visibility */
+  pointer-events: auto !important;
+  visibility: visible !important;
+  background-color: #f0f4ff;
+  border-left: 1px solid #cdd5e6;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  padding: 6px;
+  width: auto;
+  border-radius: 4px;
+  transition: all 0.25s ease;
+}
+
+/* Change toolbar background when editor is focused */
+.slate-editor-with-toolbar:focus-within .inline-toolbar {
+  background-color: #e8f0ff;
+  border-left-color: #007AFF;
+}
+
+/* Always show toolbar when it has visible class, even if editor loses focus */
+.inline-toolbar.visible {
+  background-color: #e8f0ff;
+  border-left-color: #007AFF;
+}
+
+.slate-editor-with-toolbar .slate-editor {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  min-height: 42px;
+}
+
+.slate-editor-container.compact .slate-editor-with-toolbar .slate-editor {
+  min-height: 36px;
+}
+
+/* Ensure toolbar buttons have strong hit areas */
+.inline-toolbar .toolbar-btn {
+  height: 28px;
+  min-width: 28px;
+  margin: 2px 0;
+  padding: 0;
+  font-size: 14px;
+  user-select: none; /* Prevent text selection */
+  position: relative;
+  z-index: 10; /* Ensure buttons are clickable */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background-color: #f2f2f7;
+}
+
+.toolbar-btn {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #1c1c1e;
+  font-size: 14px;
+  height: 28px;
+  margin-right: 6px;
+  min-width: 28px;
+  padding: 0 8px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  outline: none;
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolbar-btn:hover {
+  background-color: #f8f9fa;
+  border-color: #c1c7cd;
+}
+
+.toolbar-btn:active {
+  transform: scale(0.98);
+  background-color: #f0f0f0;
+}
+
+.toolbar-btn.active {
+  background-color: #E1F0FF;
+  border-color: #007AFF;
+  color: #007AFF;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Add a subtle highlight animation for active state */
+.toolbar-btn.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.3), transparent);
+  pointer-events: none;
+}
+
+/* Selection styling */
+.slate-editor ::selection {
+  background-color: rgba(0, 122, 255, 0.2);
+}
+
+/* Placeholder styling */
+.slate-editor [data-slate-placeholder] {
+  color: #a0aec0;
+  opacity: 1 !important;
+  pointer-events: none;
+}
+
+/* Special state for when editor is focused or toolbar is being interacted with */
+.slate-editor-container[data-focused="true"] .slate-editor-with-toolbar {
+  border-color: #007AFF;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
+/* When editor container is focused, make toolbar more vibrant */
+.slate-editor-container[data-focused="true"] .inline-toolbar.always-visible {
+  background-color: #e0e9ff;
+  border-left-color: #007AFF;
+}
+
+/* Custom tooltip styles to replace Material UI tooltip */
+.simple-tooltip-container {
+  position: relative;
+  display: inline-block;
+}
+
+.simple-tooltip-container .simple-tooltip-content {
+  visibility: hidden;
+  width: 120px;
+  background-color: #333;
+  color: #fff;
+  text-align: center;
+  border-radius: 4px;
+  padding: 5px;
+  position: absolute;
+  z-index: 1000;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.simple-tooltip-container:hover .simple-tooltip-content {
+  visibility: visible;
+  opacity: 0.9;
+} 
