@@ -1750,7 +1750,7 @@ const SortCategoriesEggConfig = () => {
               >
                 <IconButton
                   aria-label="Undo last change"
-                  icon={<HStack spacing={1}><FaUndo /><Text fontSize="xs" fontFamily="monospace">Z</Text></HStack>}
+                  icon={<FaUndo />}
                   size="sm"
                   onClick={handleUndo}
                   isDisabled={
@@ -1774,7 +1774,7 @@ const SortCategoriesEggConfig = () => {
               >
                 <IconButton
                   aria-label="Redo last change"
-                  icon={<HStack spacing={1}><FaRedo /><Text fontSize="xs" fontFamily="monospace">Y</Text></HStack>}
+                  icon={<FaRedo />}
                   size="sm"
                   onClick={handleRedo}
                   isDisabled={
