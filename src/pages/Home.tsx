@@ -59,9 +59,12 @@ interface GameItemProps {
   config?: any;
   onClick?: () => void;
   share?: boolean;
+  userId?: string;
+  isOwner?: boolean;
+  onDelete?: () => void;
 }
 
-const GameItem = ({ title, type, thumbnail, id, isPlayable, config, onClick }: GameItemProps) => {
+const GameItem = ({ title, type, thumbnail, id, isPlayable, config, onClick, isOwner, onDelete }: GameItemProps) => {
   const content = (
     <>
       <div style={{
@@ -101,7 +104,8 @@ const GameItem = ({ title, type, thumbnail, id, isPlayable, config, onClick }: G
       <div style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 'var(--spacing-1)'
+        gap: 'var(--spacing-1)',
+        flex: 1
       }}>
         <h3 style={{
           fontSize: 'var(--font-size-md)',
@@ -136,19 +140,292 @@ const GameItem = ({ title, type, thumbnail, id, isPlayable, config, onClick }: G
 
   if (onClick) {
     return (
-      <div style={containerStyles} onClick={onClick}>
-        {content}
+      <div style={{ position: 'relative' }}>
+        <div style={containerStyles} onClick={onClick}>
+          {/* Exclude the delete button from content */}
+          <>
+            <div style={{
+              width: '60px',
+              height: '60px',
+              backgroundColor: 'var(--color-primary-100)',
+              borderRadius: 'var(--border-radius-md)',
+              marginRight: 'var(--spacing-3)',
+              overflow: 'hidden',
+              flexShrink: 0
+            }}>
+              {thumbnail ? (
+                <img 
+                  src={thumbnail} 
+                  alt={title}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'var(--color-primary-100)',
+                  color: 'var(--color-primary-500)',
+                  fontSize: 'var(--font-size-xl)'
+                }}>
+                  {title.charAt(0)}
+                </div>
+              )}
+            </div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--spacing-1)',
+              flex: 1
+            }}>
+              <h3 style={{
+                fontSize: 'var(--font-size-md)',
+                color: 'var(--color-gray-800)',
+                margin: 0
+              }}>
+                {title}
+              </h3>
+              <span style={{
+                fontSize: 'var(--font-size-sm)',
+                color: 'var(--color-gray-600)',
+              }}>
+                Type: {type}
+              </span>
+            </div>
+          </>
+        </div>
+        {/* Position the delete button absolutely to overlay on the item */}
+        {isOwner && onDelete && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete();
+            }}
+            style={{
+              position: 'absolute',
+              top: '50%',
+              right: '16px',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--color-gray-500)',
+              padding: 'var(--spacing-1)',
+              borderRadius: 'var(--border-radius-sm)',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10
+            }}
+            aria-label="Delete"
+            title="Delete"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
+            </svg>
+          </button>
+        )}
       </div>
     );
   }
 
   return isPlayable && id ? (
-    <RouterLink to={`/game/${id}`} style={containerStyles}>
-      {content}
-    </RouterLink>
+    <div style={{ position: 'relative' }}>
+      <RouterLink to={`/game/${id}`} style={containerStyles}>
+        {/* Exclude the delete button from the RouterLink content */}
+        <>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            backgroundColor: 'var(--color-primary-100)',
+            borderRadius: 'var(--border-radius-md)',
+            marginRight: 'var(--spacing-3)',
+            overflow: 'hidden',
+            flexShrink: 0
+          }}>
+            {thumbnail ? (
+              <img 
+                src={thumbnail} 
+                alt={title}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+            ) : (
+              <div style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'var(--color-primary-100)',
+                color: 'var(--color-primary-500)',
+                fontSize: 'var(--font-size-xl)'
+              }}>
+                {title.charAt(0)}
+              </div>
+            )}
+          </div>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--spacing-1)',
+            flex: 1
+          }}>
+            <h3 style={{
+              fontSize: 'var(--font-size-md)',
+              color: 'var(--color-gray-800)',
+              margin: 0
+            }}>
+              {title}
+            </h3>
+            <span style={{
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--color-gray-600)',
+            }}>
+              Type: {type}
+            </span>
+          </div>
+        </>
+      </RouterLink>
+      {/* Position the delete button absolutely to overlay on the item */}
+      {isOwner && onDelete && (
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete();
+          }}
+          style={{
+            position: 'absolute',
+            top: '50%',
+            right: '16px',
+            transform: 'translateY(-50%)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--color-gray-500)',
+            padding: 'var(--spacing-1)',
+            borderRadius: 'var(--border-radius-sm)',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10
+          }}
+          aria-label="Delete"
+          title="Delete"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
+          </svg>
+        </button>
+      )}
+    </div>
   ) : (
-    <div style={containerStyles}>
-      {content}
+    <div style={{ position: 'relative' }}>
+      <div style={containerStyles}>
+        {/* Exclude the delete button from content */}
+        <>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            backgroundColor: 'var(--color-primary-100)',
+            borderRadius: 'var(--border-radius-md)',
+            marginRight: 'var(--spacing-3)',
+            overflow: 'hidden',
+            flexShrink: 0
+          }}>
+            {thumbnail ? (
+              <img 
+                src={thumbnail} 
+                alt={title}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+            ) : (
+              <div style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'var(--color-primary-100)',
+                color: 'var(--color-primary-500)',
+                fontSize: 'var(--font-size-xl)'
+              }}>
+                {title.charAt(0)}
+              </div>
+            )}
+          </div>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--spacing-1)',
+            flex: 1
+          }}>
+            <h3 style={{
+              fontSize: 'var(--font-size-md)',
+              color: 'var(--color-gray-800)',
+              margin: 0
+            }}>
+              {title}
+            </h3>
+            <span style={{
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--color-gray-600)',
+            }}>
+              Type: {type}
+            </span>
+          </div>
+        </>
+      </div>
+      {/* Position the delete button absolutely to overlay on the item */}
+      {isOwner && onDelete && (
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete();
+          }}
+          style={{
+            position: 'absolute',
+            top: '50%',
+            right: '16px',
+            transform: 'translateY(-50%)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--color-gray-500)',
+            padding: 'var(--spacing-1)',
+            borderRadius: 'var(--border-radius-sm)',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10
+          }}
+          aria-label="Delete"
+          title="Delete"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
+          </svg>
+        </button>
+      )}
     </div>
   );
 };
@@ -536,6 +813,127 @@ const Home = () => {
   const toast = useToast();
   const [modifiableTemplates, setModifiableTemplates] = useState<GameObject[]>([]);
   const [blankTemplates, setBlankTemplates] = useState<GameObject[]>([]);
+  
+  // State for deletion confirmation
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{id: string, type: 'template' | 'game', title: string} | null>(null);
+
+  // Handler for opening delete confirmation dialog
+  const handleDeleteClick = (id: string, type: 'template' | 'game', title: string) => {
+    setItemToDelete({id, type, title});
+    setIsDeleteDialogOpen(true);
+  };
+
+  // Function to delete a template and its associated games
+  const deleteTemplateAndGames = async () => {
+    if (!itemToDelete || !currentUser) return;
+    
+    try {
+      setLoading(true);
+      
+      // First delete the template
+      if (itemToDelete.type === 'template') {
+        await deleteDoc(doc(db, 'categoryTemplates', itemToDelete.id));
+        
+        // Then find and delete any associated games with the same title
+        const gamesQuery = query(
+          collection(db, 'userGameConfigs'),
+          where('userId', '==', currentUser.uid),
+          where('title', '==', itemToDelete.title)
+        );
+        
+        const gamesSnapshot = await getDocs(gamesQuery);
+        const deletePromises = gamesSnapshot.docs.map(doc => 
+          deleteDoc(doc.ref)
+        );
+        
+        await Promise.all(deletePromises);
+        
+        // Update local state
+        setModifiableTemplates(prev => 
+          prev.filter(template => template.id !== itemToDelete.id)
+        );
+        
+        // Update games list too
+        setPublicGames(prev => 
+          prev.filter(game => 
+            !(game.userId === currentUser.uid && game.title === itemToDelete.title)
+          )
+        );
+        
+        toast({
+          title: "Deleted Successfully",
+          description: `Deleted template "${itemToDelete.title}" and its associated games`,
+          status: "success",
+          duration: 3000,
+        });
+      } 
+      // Delete just a single game
+      else if (itemToDelete.type === 'game') {
+        await deleteDoc(doc(db, 'userGameConfigs', itemToDelete.id));
+        
+        // Update local state
+        setPublicGames(prev => 
+          prev.filter(game => game.id !== itemToDelete.id)
+        );
+        
+        toast({
+          title: "Deleted Successfully", 
+          description: `Deleted game "${itemToDelete.title}"`,
+          status: "success",
+          duration: 3000,
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete. Please try again.",
+        status: "error",
+        duration: 5000,
+      });
+    } finally {
+      setLoading(false);
+      setIsDeleteDialogOpen(false);
+      setItemToDelete(null);
+    }
+  };
+
+  // Deletion confirmation dialog
+  const DeleteConfirmationDialog = () => (
+    <Modal isOpen={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)}>
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>Confirm Deletion</ModalHeader>
+        <ModalCloseButton />
+        <ModalBody>
+          {itemToDelete?.type === 'template' ? (
+            <p>
+              Are you sure you want to delete the template "{itemToDelete?.title}"? 
+              This will also delete any associated games with the same title.
+            </p>
+          ) : (
+            <p>Are you sure you want to delete the game "{itemToDelete?.title}"?</p>
+          )}
+        </ModalBody>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '1rem' }}>
+          <Button 
+            onClick={() => setIsDeleteDialogOpen(false)}
+            style={{ marginRight: '0.5rem' }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            colorScheme="red" 
+            onClick={deleteTemplateAndGames}
+            isLoading={loading}
+          >
+            Delete
+          </Button>
+        </div>
+      </ModalContent>
+    </Modal>
+  );
 
   // Fetch public games, modifiable templates, and blank templates
   useEffect(() => {
@@ -911,6 +1309,8 @@ const Home = () => {
                           type={game.type}
                           thumbnail={game.thumbnail}
                           isPlayable={true}
+                          isOwner={currentUser && game.userId === currentUser.uid}
+                          onDelete={() => handleDeleteClick(game.id, 'game', game.title)}
                         />
                       ))}
                     </div>
@@ -938,6 +1338,7 @@ const Home = () => {
                           type={game.type}
                           thumbnail={game.thumbnail}
                           isPlayable={true}
+                          isOwner={false}
                         />
                       ))}
                     </div>
@@ -994,6 +1395,8 @@ const Home = () => {
                           type={template.type}
                           thumbnail={template.thumbnail}
                           onClick={() => handleTemplateClick(template)}
+                          isOwner={currentUser && template.userId === currentUser.uid}
+                          onDelete={() => handleDeleteClick(template.id, 'template', template.title)}
                         />
                       ))}
                     </div>
@@ -1020,6 +1423,7 @@ const Home = () => {
                           type={template.type}
                           thumbnail={template.thumbnail}
                           onClick={() => handleTemplateClick(template)}
+                          isOwner={false}
                         />
                       ))}
                     </div>
@@ -1063,6 +1467,7 @@ const Home = () => {
                     type={template.type}
                     thumbnail={template.thumbnail}
                     onClick={() => handleTemplateClick(template, true)}
+                    isOwner={false}
                   />
                 ))
               ) : (
@@ -1081,6 +1486,9 @@ const Home = () => {
         template={selectedTemplate}
         onSave={handleSaveConfig}
       />
+
+      {/* Render the confirmation dialog */}
+      <DeleteConfirmationDialog />
     </div>
   );
 };
