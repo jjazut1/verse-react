@@ -67,10 +67,10 @@
   visibility: visible;
 }
 
-/* Always visible toolbar */
+/* Always visible toolbar - modified for focus-controlled opacity */
 .inline-toolbar.always-visible {
-  opacity: 1 !important; /* Force visibility */
-  pointer-events: auto !important;
+  opacity: 0.001; /* Nearly invisible by default */
+  pointer-events: auto !important; /* Keep clickable */
   visibility: visible !important;
   background-color: #f0f4ff;
   border-left: 1px solid #cdd5e6;
@@ -80,13 +80,14 @@
   padding: 6px;
   width: auto;
   border-radius: 4px;
-  transition: all 0.25s ease;
+  transition: opacity 0.25s ease; /* Transition only opacity for smoother effect */
 }
 
 /* Change toolbar background when editor is focused */
 .slate-editor-with-toolbar:focus-within .inline-toolbar {
   background-color: #e8f0ff;
   border-left-color: #007AFF;
+  opacity: 1; /* Fully visible when focused */
 }
 
 /* Always show toolbar when it has visible class, even if editor loses focus */
@@ -152,9 +153,10 @@
   justify-content: center;
 }
 
+/* Override hover styles - disable hover effects */
 .toolbar-btn:hover {
-  background-color: #f8f9fa;
-  border-color: #c1c7cd;
+  background-color: white;
+  border-color: #d1d5db;
 }
 
 .toolbar-btn:active {
@@ -200,10 +202,11 @@
   box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
 }
 
-/* When editor container is focused, make toolbar more vibrant */
+/* When editor container is focused, make toolbar fully visible */
 .slate-editor-container[data-focused="true"] .inline-toolbar.always-visible {
   background-color: #e0e9ff;
   border-left-color: #007AFF;
+  opacity: 1; /* Fully visible when focused */
 }
 
 /* Custom tooltip styles to replace Material UI tooltip */
@@ -231,7 +234,14 @@
   pointer-events: none;
 }
 
+/* Disable hover effect on tooltips */
 .simple-tooltip-container:hover .simple-tooltip-content {
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* Only show tooltips when editor is focused */
+.slate-editor-container[data-focused="true"] .simple-tooltip-container:hover .simple-tooltip-content {
   visibility: visible;
   opacity: 0.9;
 } 
