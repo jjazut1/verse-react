@@ -516,6 +516,7 @@ const Home = () => {
     title: string;
     type: string;
     thumbnail?: string;
+    userId?: string; // Add userId to track ownership
   }>>([]);
   const [freeGamesSearch, setFreeGamesSearch] = useState('');
   const [modifiableSearch, setModifiableSearch] = useState('');
@@ -567,7 +568,8 @@ const Home = () => {
           id: doc.id,
           title: doc.data().title || 'Untitled Game',
           type: doc.data().type || 'sort-categories-egg',
-          thumbnail: doc.data().thumbnail || undefined
+          thumbnail: doc.data().thumbnail || undefined,
+          userId: doc.data().userId || undefined // Include userId for ownership checking
         }));
         setPublicGames(games);
 
@@ -623,43 +625,25 @@ const Home = () => {
     fetchGames();
   }, [toast]);
 
-  // Filter public games based on search
-  const filteredPublicGames = publicGames.filter(game =>
+  // Filter and separate games based on ownership and search
+  const userOwnedGames = publicGames.filter(game => 
+    currentUser && game.userId === currentUser.uid &&
+    game.title.toLowerCase().includes(freeGamesSearch.toLowerCase())
+  );
+  
+  const otherPublicGames = publicGames.filter(game => 
+    !currentUser || game.userId !== currentUser.uid &&
     game.title.toLowerCase().includes(freeGamesSearch.toLowerCase())
   );
 
-  const modifiableTemplatesData = [
-    { 
-      id: 1, 
-      title: 'Customizable Quiz', 
-      type: 'Quiz Template',
-      thumbnail: '/game-thumbnails/quiz.png'
-    },
-    { 
-      id: 2, 
-      title: 'Flashcards Template', 
-      type: 'Flashcard Template',
-      thumbnail: '/game-thumbnails/flashcards.png'
-    },
-  ];
-
-  const blankTemplatesData = [
-    { 
-      id: 1, 
-      title: 'Blank Quiz Builder', 
-      type: 'sort-categories-egg',
-      thumbnail: '/game-thumbnails/blank-quiz.png'
-    },
-    { 
-      id: 2, 
-      title: 'Empty Game Canvas', 
-      type: 'whack-a-mole',
-      thumbnail: '/game-thumbnails/blank-canvas.png'
-    },
-  ];
-
-  // Filter modifiable templates based on search
-  const filteredModifiable = modifiableTemplates.filter(template =>
+  // Filter and separate templates based on ownership and search
+  const userOwnedTemplates = modifiableTemplates.filter(template => 
+    currentUser && template.userId === currentUser.uid &&
+    template.title.toLowerCase().includes(modifiableSearch.toLowerCase())
+  );
+  
+  const otherTemplates = modifiableTemplates.filter(template => 
+    !currentUser || template.userId !== currentUser.uid &&
     template.title.toLowerCase().includes(modifiableSearch.toLowerCase())
   );
 
@@ -886,21 +870,66 @@ const Home = () => {
                 <div style={{ textAlign: 'center', padding: 'var(--spacing-4)' }}>
                   Loading games...
                 </div>
-              ) : filteredPublicGames.length > 0 ? (
-                filteredPublicGames.map(game => (
-                  <GameItem 
-                    key={game.id} 
-                    id={game.id}
-                    title={game.title} 
-                    type={game.type}
-                    thumbnail={game.thumbnail}
-                    isPlayable={true}
-                  />
-                ))
               ) : (
-                <div style={{ textAlign: 'center', padding: 'var(--spacing-4)' }}>
-                  No games found
-                </div>
+                <>
+                  {/* User's own games section */}
+                  {currentUser && userOwnedGames.length > 0 && (
+                    <div>
+                      <h3 style={{ 
+                        fontSize: 'var(--font-size-lg)',
+                        color: 'var(--color-gray-700)',
+                        margin: 'var(--spacing-4) 0',
+                        paddingBottom: 'var(--spacing-2)',
+                        borderBottom: '1px solid var(--color-gray-200)'
+                      }}>
+                        My Games
+                      </h3>
+                      {userOwnedGames.map(game => (
+                        <GameItem 
+                          key={game.id} 
+                          id={game.id}
+                          title={game.title} 
+                          type={game.type}
+                          thumbnail={game.thumbnail}
+                          isPlayable={true}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Other public games section */}
+                  {otherPublicGames.length > 0 && (
+                    <div>
+                      {currentUser && userOwnedGames.length > 0 && (
+                        <h3 style={{ 
+                          fontSize: 'var(--font-size-lg)',
+                          color: 'var(--color-gray-700)',
+                          margin: 'var(--spacing-4) 0',
+                          paddingBottom: 'var(--spacing-2)',
+                          borderBottom: '1px solid var(--color-gray-200)'
+                        }}>
+                          Other Public Games
+                        </h3>
+                      )}
+                      {otherPublicGames.map(game => (
+                        <GameItem 
+                          key={game.id} 
+                          id={game.id}
+                          title={game.title} 
+                          type={game.type}
+                          thumbnail={game.thumbnail}
+                          isPlayable={true}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  
+                  {userOwnedGames.length === 0 && otherPublicGames.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: 'var(--spacing-4)' }}>
+                      No games found
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -925,20 +954,64 @@ const Home = () => {
                 <div style={{ textAlign: 'center', padding: 'var(--spacing-4)' }}>
                   Loading templates...
                 </div>
-              ) : filteredModifiable.length > 0 ? (
-                filteredModifiable.map(template => (
-                  <GameItem 
-                    key={template.id} 
-                    title={template.title} 
-                    type={template.type}
-                    thumbnail={template.thumbnail}
-                    onClick={() => handleTemplateClick(template)}
-                  />
-                ))
               ) : (
-                <div style={{ textAlign: 'center', padding: 'var(--spacing-4)' }}>
-                  No templates found
-                </div>
+                <>
+                  {/* User's own templates section */}
+                  {currentUser && userOwnedTemplates.length > 0 && (
+                    <div>
+                      <h3 style={{ 
+                        fontSize: 'var(--font-size-lg)',
+                        color: 'var(--color-gray-700)',
+                        margin: 'var(--spacing-4) 0',
+                        paddingBottom: 'var(--spacing-2)',
+                        borderBottom: '1px solid var(--color-gray-200)'
+                      }}>
+                        My Templates
+                      </h3>
+                      {userOwnedTemplates.map(template => (
+                        <GameItem 
+                          key={template.id} 
+                          title={template.title} 
+                          type={template.type}
+                          thumbnail={template.thumbnail}
+                          onClick={() => handleTemplateClick(template)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Other templates section */}
+                  {otherTemplates.length > 0 && (
+                    <div>
+                      {currentUser && userOwnedTemplates.length > 0 && (
+                        <h3 style={{ 
+                          fontSize: 'var(--font-size-lg)',
+                          color: 'var(--color-gray-700)',
+                          margin: 'var(--spacing-4) 0',
+                          paddingBottom: 'var(--spacing-2)',
+                          borderBottom: '1px solid var(--color-gray-200)'
+                        }}>
+                          Other Templates
+                        </h3>
+                      )}
+                      {otherTemplates.map(template => (
+                        <GameItem 
+                          key={template.id} 
+                          title={template.title} 
+                          type={template.type}
+                          thumbnail={template.thumbnail}
+                          onClick={() => handleTemplateClick(template)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  
+                  {userOwnedTemplates.length === 0 && otherTemplates.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: 'var(--spacing-4)' }}>
+                      No templates found
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
