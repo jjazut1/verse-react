@@ -914,6 +914,8 @@ const SortCategoriesEggConfig = () => {
         categories: processedCategories,
         eggQty: eggQty,
         userId: currentUser.uid,
+        share: true, // Add sharing option for templates
+        email: currentUser.email,
         createdAt: serverTimestamp()
       };
 

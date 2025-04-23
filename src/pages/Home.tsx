@@ -58,6 +58,7 @@ interface GameItemProps {
   isPlayable?: boolean;
   config?: any;
   onClick?: () => void;
+  share?: boolean;
 }
 
 const GameItem = ({ title, type, thumbnail, id, isPlayable, config, onClick }: GameItemProps) => {
@@ -509,15 +510,21 @@ const ConfigurationModal = ({
   );
 };
 
+// Define a proper interface for game objects
+interface GameObject {
+  id: string;
+  title: string;
+  type: string;
+  thumbnail?: string;
+  userId?: string;
+  share?: boolean;
+  categories?: any[];
+  eggQty?: number;
+}
+
 const Home = () => {
   // State for games and search
-  const [publicGames, setPublicGames] = useState<Array<{
-    id: string;
-    title: string;
-    type: string;
-    thumbnail?: string;
-    userId?: string; // Add userId to track ownership
-  }>>([]);
+  const [publicGames, setPublicGames] = useState<GameObject[]>([]);
   const [freeGamesSearch, setFreeGamesSearch] = useState('');
   const [modifiableSearch, setModifiableSearch] = useState('');
   const [blankSearch, setBlankSearch] = useState('');
@@ -527,25 +534,8 @@ const Home = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const toast = useToast();
-  const [modifiableTemplates, setModifiableTemplates] = useState<Array<{
-    id: string;
-    title: string;
-    type: string;
-    thumbnail?: string;
-    userId: string;
-    categories: Array<{ name: string; items: string[] }>;
-    eggQty: number;
-    share: boolean;
-  }>>([]);
-  const [blankTemplates, setBlankTemplates] = useState<Array<{
-    id: string;
-    title: string;
-    type: string;
-    thumbnail?: string;
-    categories: Array<{ name: string; items: string[] }>;
-    eggQty: number;
-    share: boolean;
-  }>>([]);
+  const [modifiableTemplates, setModifiableTemplates] = useState<GameObject[]>([]);
+  const [blankTemplates, setBlankTemplates] = useState<GameObject[]>([]);
 
   // Fetch public games, modifiable templates, and blank templates
   useEffect(() => {
@@ -553,27 +543,56 @@ const Home = () => {
       try {
         setLoading(true);
         
-        // Query for shared games, modifiable templates, and blank templates
-        const [publicSnapshot, templatesSnapshot, blankTemplatesSnapshot] = await Promise.all([
+        // Query for user's own games and publicly shared games by others
+        const [userOwnGamesSnapshot, publicGamesSnapshot, templatesSnapshot, blankTemplatesSnapshot] = await Promise.all([
+          // Get all of the current user's games (both private and public)
+          currentUser ? getDocs(query(
+            collection(db, 'userGameConfigs'),
+            where('userId', '==', currentUser.uid)
+          )) : Promise.resolve({ docs: [] }),
+          
+          // Get public games (we'll filter by userId in JavaScript)
           getDocs(query(
             collection(db, 'userGameConfigs'),
             where('share', '==', true)
           )),
-          getDocs(collection(db, 'userGameConfigs')),
+          
+          // Get modifiable templates from categoryTemplates
+          getDocs(query(
+            collection(db, 'categoryTemplates'),
+            where('type', '==', 'sort-categories-egg')
+          )),
+          
+          // Get blank templates
           getDocs(collection(db, 'blankGameTemplates'))
         ]);
 
-        // Process public games
-        const games = publicSnapshot.docs.map(doc => ({
+        // Process the user's own games
+        const userGames = userOwnGamesSnapshot.docs.map(doc => ({
           id: doc.id,
           title: doc.data().title || 'Untitled Game',
           type: doc.data().type || 'sort-categories-egg',
           thumbnail: doc.data().thumbnail || undefined,
-          userId: doc.data().userId || undefined // Include userId for ownership checking
+          userId: doc.data().userId || undefined,
+          share: doc.data().share || false
         }));
-        setPublicGames(games);
 
-        // Process modifiable templates
+        // Process other users' public games (filter out current user's games)
+        const otherGames = publicGamesSnapshot.docs
+          .filter(doc => !currentUser || doc.data().userId !== currentUser.uid)
+          .map(doc => ({
+            id: doc.id,
+            title: doc.data().title || 'Untitled Game',
+            type: doc.data().type || 'sort-categories-egg',
+            thumbnail: doc.data().thumbnail || undefined,
+            userId: doc.data().userId || undefined,
+            share: doc.data().share || false
+          }));
+
+        // Combine into a single array for public games display
+        setPublicGames([...userGames, ...otherGames]);
+
+        // Process modifiable templates from categoryTemplates collection
         const templates = templatesSnapshot.docs.map(doc => ({
           id: doc.id,
           title: doc.data().title || 'Untitled Template',
@@ -608,7 +627,6 @@ const Home = () => {
           };
         });
         setBlankTemplates(blankTemplatesData);
-
       } catch (error: any) {
         console.error('Error fetching games:', error);
         toast({
@@ -623,7 +641,7 @@ const Home = () => {
     };
 
     fetchGames();
-  }, [toast]);
+  }, [toast, currentUser]);
 
   // Filter and separate games based on ownership and search
   const userOwnedGames = publicGames.filter(game => 
@@ -632,7 +650,8 @@ const Home = () => {
   );
   
   const otherPublicGames = publicGames.filter(game => 
-    !currentUser || game.userId !== currentUser.uid &&
+    (!currentUser || game.userId !== currentUser.uid) &&
+    game.share === true && // Only show other users' games if they're public
     game.title.toLowerCase().includes(freeGamesSearch.toLowerCase())
   );
 
