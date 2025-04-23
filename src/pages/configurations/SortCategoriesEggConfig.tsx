@@ -1193,7 +1193,14 @@ const SortCategoriesEggConfig = () => {
       return sum;
     }
     // Only count non-empty items
-    const validItems = category.items.filter((item: string) => item && item.trim().length > 0);
+    const validItems = category.items.filter((item: any) => {
+      // Check if item is a string before calling trim()
+      if (typeof item !== 'string') {
+        console.log('Found non-string item:', item);
+        return false;
+      }
+      return item && item.trim().length > 0;
+    });
     return sum + validItems.length;
   }, 0);
 
