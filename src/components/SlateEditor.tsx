@@ -365,14 +365,25 @@ export const SlateEditor = forwardRef<HTMLDivElement, SlateEditorProps>(({
         targetEl.getAttribute('data-toolbar-button') === 'true';
       
       if (isToolbarElement) {
-        if (DEBUG) console.log(`Toolbar interaction detected for editor ${editorId.current}`);
-        isToolbarInteractionRef.current = true;
+        // Important: Check if this toolbar belongs to the current editor
+        // Find the editor container that contains this toolbar
+        const editorContainer = targetEl.closest('.slate-editor-container') as HTMLElement;
+        if (!editorContainer) return;
         
-        // Important: prevent default behavior on toolbar buttons to avoid focus loss
-        e.preventDefault();
+        // Get the editor ID from the container
+        const clickedEditorId = editorContainer.getAttribute('data-editor-id');
         
-        // Also, save the current selection BEFORE any action is taken
-        saveSelection();
+        // Only process the event if it's for this editor instance
+        if (clickedEditorId === editorId.current) {
+          if (DEBUG) console.log(`Toolbar interaction detected for editor ${editorId.current}`);
+          isToolbarInteractionRef.current = true;
+          
+          // Important: prevent default behavior on toolbar buttons to avoid focus loss
+          e.preventDefault();
+          
+          // Also, save the current selection BEFORE any action is taken
+          saveSelection();
+        }
       }
     };
     
