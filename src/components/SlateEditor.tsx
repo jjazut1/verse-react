@@ -179,88 +179,87 @@ export const SlateEditor = forwardRef<HTMLDivElement, SlateEditorProps>(({
     return e;
   }, []);
 
+  // Create a unique ID for this editor instance
+  const editorId = useRef(`editor-${Math.random().toString(36).substring(2, 9)}`);
+  
   // Track initialization
   const isInitialized = useRef(false);
   const domRef = useRef<HTMLDivElement>(null);
 
-  // Expose a method to focus and position cursor at the beginning
-  useImperativeHandle(ref, () => {
-    const element = domRef.current as unknown as SlateEditorRef;
-    if (element) {
-      element.focus = () => {
-        try {
-          if (DEBUG) console.log('Imperative focus called');
-          // Focus the editor
-          ReactEditor.focus(editor);
-          // Set selection to the beginning
-          Transforms.select(editor, Editor.start(editor, []));
-          setIsFocused(true);
-          return true;
-        } catch (err) {
-          console.error('Error in imperative focus:', err);
-    return false;
-  }
-};
-
-      // Add undo method
-      element.undo = () => {
-        try {
-          if (DEBUG) console.log('Imperative undo called');
-          
-          // Needs to focus first to work properly
-          ReactEditor.focus(editor);
-          
-          // Trigger undo via the editor
-          const event = new KeyboardEvent('keydown', {
-            key: 'z',
-            code: 'KeyZ',
-            ctrlKey: true,
-            metaKey: true,
-            bubbles: true
-          });
-          
-          // Dispatch directly to the editor DOM node to ensure it's handled
-          const editorElement = ReactEditor.toDOMNode(editor, editor);
-          editorElement.dispatchEvent(event);
-          
-          // Show the toolbar after undo
-          setIsToolbarVisible(true);
-        } catch (err) {
-          console.error('Error in imperative undo:', err);
-        }
-      };
-      
-      // Add redo method
-      element.redo = () => {
-        try {
-          if (DEBUG) console.log('Imperative redo called');
-          
-          // Needs to focus first to work properly
-          ReactEditor.focus(editor);
-          
-          // Trigger redo via the editor
-          const event = new KeyboardEvent('keydown', {
-            key: 'z',
-            code: 'KeyZ',
-            ctrlKey: true,
-            metaKey: true,
-            shiftKey: true,
-            bubbles: true
-          });
-          
-          // Dispatch directly to the editor DOM node to ensure it's handled
-          const editorElement = ReactEditor.toDOMNode(editor, editor);
-          editorElement.dispatchEvent(event);
-          
-          // Show the toolbar after redo
-          setIsToolbarVisible(true);
-        } catch (err) {
-          console.error('Error in imperative redo:', err);
-        }
+  // NEW: Global selection tracking system
+  // This ensures we don't lose selection context between multiple editors
+  useEffect(() => {
+    // Create a global store for active editor if it doesn't exist
+    if (typeof window !== 'undefined' && !window.hasOwnProperty('_activeSlateEditor')) {
+      (window as any)._activeSlateEditor = {
+        id: null,
+        selection: null,
+        timestamp: 0
       };
     }
-    return element as SlateEditorRef;
-  });
+
+    // Handle focus to set this as the active editor
+    const handleFocus = () => {
+      const globalState = (window as any)._activeSlateEditor;
+      globalState.id = editorId.current;
+      globalState.timestamp = Date.now();
+      if (DEBUG) console.log(`Editor ${editorId.current} is now active`);
+    };
+
+    // Attach focus handler to our editor DOM element
+    const editorElement = domRef.current;
+    if (editorElement) {
+      editorElement.addEventListener('focus', handleFocus, true);
+      
+      // Check if we should be the active editor (e.g., if we were before page reload)
+      if (!(window as any)._activeSlateEditor.id) {
+        (window as any)._activeSlateEditor.id = editorId.current;
+      }
+    }
+
+    return () => {
+      if (editorElement) {
+        editorElement.removeEventListener('focus', handleFocus, true);
+      }
+    };
+  }, []);
+
+  // NEW: Selection saving logic that's editor-instance aware
+  const saveSelection = useCallback(() => {
+    if (editor.selection) {
+      lastSelectionRef.current = editor.selection;
+      
+      // Also update the global state if this is the active editor
+      if ((window as any)._activeSlateEditor?.id === editorId.current) {
+        (window as any)._activeSlateEditor.selection = editor.selection;
+        (window as any)._activeSlateEditor.timestamp = Date.now();
+        if (DEBUG) console.log(`Saved selection in active editor ${editorId.current}:`, editor.selection);
+      }
+    }
+  }, [editor]);
+
+  // NEW: Selection restoration logic that's editor-instance aware
+  const restoreSelection = useCallback(() => {
+    try {
+      // Only restore if we're the active editor
+      if ((window as any)._activeSlateEditor?.id === editorId.current) {
+        const savedSelection = lastSelectionRef.current;
+        
+        if (savedSelection) {
+          // Check if selection paths still exist in the document
+          if (Editor.hasPath(editor, savedSelection.anchor.path) && 
+              Editor.hasPath(editor, savedSelection.focus.path)) {
+            Transforms.select(editor, savedSelection);
+            if (DEBUG) console.log(`Restored selection in editor ${editorId.current}`);
+          } else if (DEBUG) {
+            console.log(`Couldn't restore selection in editor ${editorId.current} - paths don't exist`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error restoring selection:', err);
+    }
+  }, [editor]);
 
   // Track last value received from props to avoid unnecessary rerenders
   const lastPropValueRef = useRef(inputValue);
@@ -366,49 +365,29 @@ export const SlateEditor = forwardRef<HTMLDivElement, SlateEditorProps>(({
         targetEl.getAttribute('data-toolbar-button') === 'true';
       
       if (isToolbarElement) {
-        if (DEBUG) console.log('Toolbar interaction detected');
+        if (DEBUG) console.log(`Toolbar interaction detected for editor ${editorId.current}`);
         isToolbarInteractionRef.current = true;
         
         // Important: prevent default behavior on toolbar buttons to avoid focus loss
         e.preventDefault();
         
         // Also, save the current selection BEFORE any action is taken
-        if (editor.selection) {
-          lastSelectionRef.current = editor.selection;
-          if (DEBUG) console.log('Saved selection before toolbar interaction');
-        }
+        saveSelection();
       }
     };
     
     // Reset toolbar interaction flag when mouse is released
     const handleMouseUp = () => {
       if (isToolbarInteractionRef.current) {
-        if (DEBUG) console.log('Toolbar interaction complete');
+        if (DEBUG) console.log(`Toolbar interaction complete for editor ${editorId.current}`);
         
         setTimeout(() => {
           try {
-            ReactEditor.focus(editor);
-            setIsFocused(true);
-
-            if (lastSelectionRef.current) {
-              try {
-                // Check if the selection paths are valid before restoring
-                if (Editor.hasPath(editor, lastSelectionRef.current.anchor.path) && 
-                    Editor.hasPath(editor, lastSelectionRef.current.focus.path)) {
-                  Transforms.select(editor, lastSelectionRef.current);
-                  if (DEBUG) console.log('Selection restored after toolbar');
-                } else if (DEBUG) {
-                  console.log('Skipping selection restore after toolbar - paths no longer exist');
-                  Transforms.select(editor, Editor.start(editor, []));
-                }
-              } catch (err) {
-                console.error('Error restoring selection after toolbar:', err);
-                try {
-                  Transforms.select(editor, Editor.start(editor, []));
-                } catch (fallbackErr) {
-                  console.error('Failed fallback selection after toolbar:', fallbackErr);
-                }
-              }
+            // Only focus and restore if we're the active editor
+            if ((window as any)._activeSlateEditor?.id === editorId.current) {
+              ReactEditor.focus(editor);
+              setIsFocused(true);
+              restoreSelection();
             }
           } catch (err) {
             console.error('Error maintaining focus after toolbar interaction', err);
@@ -427,7 +406,7 @@ export const SlateEditor = forwardRef<HTMLDivElement, SlateEditorProps>(({
       document.removeEventListener('mousedown', handleMouseDown, true);
       document.removeEventListener('mouseup', handleMouseUp, true);
     };
-  }, [editor]);
+  }, [editor, saveSelection, restoreSelection]);
 
   // Ensure we maintain active marks and proper toolbar visibility
   // This is especially important after format operations
@@ -528,7 +507,7 @@ export const SlateEditor = forwardRef<HTMLDivElement, SlateEditorProps>(({
 
   // Update handleFocus to restore selection
   const handleFocus = useCallback(() => {
-    if (DEBUG) console.log('Editor focused');
+    if (DEBUG) console.log(`Editor ${editorId.current} focused`);
     
     // Clear any pending blur timeout
     if (blurTimeoutRef.current) {
@@ -538,21 +517,28 @@ export const SlateEditor = forwardRef<HTMLDivElement, SlateEditorProps>(({
     
     setIsFocused(true);
     
-    // Save current selection as last selection
-    if (editor.selection) {
-      lastSelectionRef.current = editor.selection;
+    // Save this editor as the active one
+    if (typeof window !== 'undefined') {
+      (window as any)._activeSlateEditor = {
+        id: editorId.current,
+        selection: editor.selection,
+        timestamp: Date.now()
+      };
     }
-  }, [editor]);
+    
+    // Save current selection as last selection
+    saveSelection();
+    
+    // Try to restore the selection from last time this editor was active
+    restoreSelection();
+  }, [editor, saveSelection, restoreSelection]);
 
   // Update handleBlur to prevent selection loss
-  const handleBlur = useCallback(() => {
-    if (DEBUG) console.log('Editor blurred');
+  const handleBlur = useCallback((e: React.FocusEvent) => {
+    if (DEBUG) console.log(`Editor ${editorId.current} blurred`);
     
     // Store the current selection on blur
-    if (editor.selection) {
-      lastSelectionRef.current = editor.selection;
-      if (DEBUG) console.log('Saved selection on blur');
-    }
+    saveSelection();
     
     // Don't immediately set unfocused if we're interacting with toolbar
     if (isToolbarInteractionRef.current) {
@@ -574,7 +560,7 @@ export const SlateEditor = forwardRef<HTMLDivElement, SlateEditorProps>(({
       }
       blurTimeoutRef.current = null;
     }, 50);
-  }, [editor, isToolbarInteractionRef]);
+  }, [saveSelection]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -718,6 +704,7 @@ export const SlateEditor = forwardRef<HTMLDivElement, SlateEditorProps>(({
       className={`slate-editor-container ${compact ? 'compact' : ''} ${className}`}
       ref={domRef}
       data-focused={isFocused || isToolbarInteractionRef.current}
+      data-editor-id={editorId.current}
     >
       <Slate 
         editor={editor} 

@@ -11,6 +11,7 @@ import { MutableRefObject, Dispatch, SetStateAction } from 'react';
  * @param activeMarksRef MutableRefObject holding the active marks state
  * @param setActiveMarks Setter for updating active marks
  * @param setIsFocused Setter for updating focus state
+ * @param editorId Optional editor identifier for multi-editor scenarios
  */
 export function applyMarkSafely(
   editor: Editor,
@@ -18,32 +19,69 @@ export function applyMarkSafely(
   lastSelectionRef: MutableRefObject<any>,
   activeMarksRef: MutableRefObject<Record<string, boolean>>,
   setActiveMarks: Dispatch<SetStateAction<Record<string, boolean>>>,
-  setIsFocused: Dispatch<SetStateAction<boolean>>
+  setIsFocused: Dispatch<SetStateAction<boolean>>,
+  editorId?: string
 ) {
   try {
     const DEBUG = true;
     let selection = editor.selection;
 
+    // Check global active editor tracking (if available in window)
+    if (typeof window !== 'undefined' && 
+        window.hasOwnProperty('_activeSlateEditor') && 
+        editorId) {
+      
+      const globalState = (window as any)._activeSlateEditor;
+      
+      // If we're not the active editor, try to use the global selection context
+      if (globalState.id && globalState.id !== editorId) {
+        if (DEBUG) console.log(`Note: Formatting in editor ${editorId} but active editor is ${globalState.id}`);
+      } else if (globalState.id === editorId && globalState.selection && !selection) {
+        // We're the active editor but lost selection - restore from global context
+        try {
+          selection = globalState.selection;
+          if (DEBUG) console.log(`Restored selection from global context for editor ${editorId}`);
+        } catch (err) {
+          console.error('Failed to use global selection:', err);
+        }
+      }
+    }
+
     // Try to use the lastSelectionRef if no current selection
     if (!selection && lastSelectionRef.current) {
       try {
-        Transforms.select(editor, lastSelectionRef.current);
-        selection = lastSelectionRef.current;
-        ReactEditor.focus(editor);
-        if (DEBUG) console.log('Restored selection from lastSelectionRef');
+        // Validate selection paths first
+        if (Editor.hasPath(editor, lastSelectionRef.current.anchor.path) && 
+            Editor.hasPath(editor, lastSelectionRef.current.focus.path)) {
+          
+          Transforms.select(editor, lastSelectionRef.current);
+          selection = lastSelectionRef.current;
+          ReactEditor.focus(editor);
+          if (DEBUG) console.log('Restored selection from lastSelectionRef');
+        } else {
+          if (DEBUG) console.log('Cannot restore selection - paths no longer exist');
+        }
       } catch (selError) {
         console.error('Failed to restore selection from ref:', selError);
       }
     }
 
     if (!selection) {
-      console.warn('applyMarkSafely: No valid selection. Aborting.');
-      return;
+      // If we still don't have a selection, try to position at start of document
+      try {
+        const start = Editor.start(editor, []);
+        Transforms.select(editor, start);
+        selection = { anchor: start, focus: start };
+        if (DEBUG) console.log('Positioned cursor at document start as fallback');
+      } catch (startErr) {
+        console.warn('applyMarkSafely: No valid selection and cannot position at start. Aborting.');
+        return;
+      }
     }
-
+    
     // Safe to log now that we've verified selection exists
     if (DEBUG) console.log('Using selection:', JSON.stringify(selection));
-
+    
     // Check if the selection is collapsed (just a cursor)
     const isCollapsed = Range.isCollapsed(selection);
     if (isCollapsed) {
@@ -59,34 +97,34 @@ export function applyMarkSafely(
           // If in a word, select the word
           const textBeforeCursor = node.text.substring(0, selection.anchor.offset);
           const textAfterCursor = node.text.substring(selection.anchor.offset);
-
+          
           // Check if we're inside a word
           const nonWordPattern = /\s/;
-          const isInWord =
+          const isInWord = 
             (textBeforeCursor.length > 0 && !nonWordPattern.test(textBeforeCursor.charAt(textBeforeCursor.length - 1))) ||
             (textAfterCursor.length > 0 && !nonWordPattern.test(textAfterCursor.charAt(0)));
-
+          
           if (isInWord) {
             // Find word boundaries
             let startOffset = selection.anchor.offset;
             let endOffset = selection.anchor.offset;
-
+            
             // Look backward for word start
             while (startOffset > 0 && !nonWordPattern.test(node.text.charAt(startOffset - 1))) {
               startOffset--;
             }
-
+            
             // Look forward for word end
             while (endOffset < node.text.length && !nonWordPattern.test(node.text.charAt(endOffset))) {
               endOffset++;
             }
-
+            
             // Create a new selection for the word
             const newSelection = {
               anchor: { path: selection.anchor.path, offset: startOffset },
               focus: { path: selection.anchor.path, offset: endOffset }
             };
-
+            
             if (DEBUG) console.log('Expanded selection to word:', JSON.stringify(newSelection));
             Transforms.select(editor, newSelection);
             selection = newSelection;
@@ -94,18 +132,18 @@ export function applyMarkSafely(
             // Not in a word, but there's text - select at least one character if possible
             let startOffset = Math.max(0, selection.anchor.offset - 1);
             let endOffset = Math.min(node.text.length, selection.anchor.offset + 1);
-
+            
             // Ensure we have at least one character selected
             if (startOffset === endOffset) {
               if (startOffset > 0) startOffset--;
               else if (endOffset < node.text.length) endOffset++;
             }
-
+            
             const newSelection = {
               anchor: { path: selection.anchor.path, offset: startOffset },
               focus: { path: selection.anchor.path, offset: endOffset }
             };
-
+            
             if (DEBUG) console.log('Expanded selection to nearby chars:', JSON.stringify(newSelection));
             Transforms.select(editor, newSelection);
             selection = newSelection;
@@ -115,7 +153,7 @@ export function applyMarkSafely(
         console.error('Failed to expand collapsed selection:', expandErr);
       }
     }
-
+    
     // Save selection details
     const isForward = Range.isForward(selection);
     const range = { ...selection };
@@ -125,30 +163,30 @@ export function applyMarkSafely(
     const startOffset = selectionStart.offset;
     const endPath = [...selectionEnd.path];
     const endOffset = selectionEnd.offset;
-
+    
     // Find the parent paragraph (or block element)
     const blockPath = Path.parent(startPath);
-
+    
     // Check the format status of the current selection
     let isActive = false;
     try {
       // We'll use an array to gather all nodes in the selection
       const nodesInSelection: [Node, Path][] = [];
-
+      
       // Get all text nodes within the selection range
       for (const [node, path] of Editor.nodes(editor, {
         at: selection,
         match: Text.isText,
       })) {
         nodesInSelection.push([node, path]);
-
+        
         // Check if this node has the format
         if ((node as Record<string, any>)[format]) {
           isActive = true;
           break; // If any node has format, we'll consider it active
         }
       }
-
+      
       if (DEBUG) console.log(`Format ${format} isActive:`, isActive);
     } catch (err) {
       console.error('Error checking format status:', err);
@@ -163,7 +201,7 @@ export function applyMarkSafely(
         Editor.addMark(editor, format, true);
         if (DEBUG) console.log(`Added ${format} mark`);
       }
-
+      
       // Update the formatting state
       const updatedMarks = {
         ...activeMarksRef.current,
@@ -178,9 +216,9 @@ export function applyMarkSafely(
         if (!Element.isElement(paragraphNode)) {
           throw new Error('Expected paragraph to be an Element');
         }
-
+        
         if (DEBUG) console.log(`Node structure after format:`, JSON.stringify(paragraphNode));
-
+        
         // Count how many text nodes are in the paragraph now
         const textNodes = paragraphNode.children.filter((n: any) => Text.isText(n));
         if (DEBUG) console.log(`Paragraph now has ${textNodes.length} text nodes`);
@@ -188,10 +226,21 @@ export function applyMarkSafely(
         console.error('Error getting paragraph structure:', err);
       }
 
+      // Update global editor state if available
+      if (typeof window !== 'undefined' && 
+          window.hasOwnProperty('_activeSlateEditor') && 
+          editorId) {
+        const globalState = (window as any)._activeSlateEditor;
+        if (globalState.id !== editorId) {
+          globalState.id = editorId;
+          if (DEBUG) console.log(`Updated active editor to ${editorId}`);
+        }
+      }
+
       // Restore focus
       ReactEditor.focus(editor);
       setIsFocused(true);
-
+      
       // Restore selection with special handling for split nodes
       setTimeout(() => {
         try {
@@ -201,32 +250,32 @@ export function applyMarkSafely(
           let newEndPath: Path = [...blockPath, 0];   // Default fallback
           let newStartOffset = startOffset;
           let newEndOffset = endOffset;
-
+          
           // Get the paragraph after formatting
           const paragraphNode = Node.get(editor, blockPath);
           if (!Element.isElement(paragraphNode)) {
             throw new Error('Expected paragraph to be an Element');
           }
-
+          
           const children = paragraphNode.children;
-
+          
           if (DEBUG) console.log(`Searching for new selection in ${children.length} children nodes`);
-
-          // We need to find where our selection points are now in the potentially
+          
+          // We need to find where our selection points are now in the potentially 
           // modified node structure
           let currentOffset = 0;
           let foundStart = false;
           let foundEnd = false;
-
+          
           // Loop through child nodes to find where our selection points now live
           for (let i = 0; i < children.length; i++) {
             const child = children[i] as Text;
             if (!Text.isText(child)) continue;
-
+            
             const childPath = [...blockPath, i];
             const length = child.text.length;
             const nodeEndOffset = currentOffset + length;
-
+            
             // Check if this node contains our start point
             if (!foundStart && currentOffset <= startOffset && startOffset <= nodeEndOffset) {
               newStartPath = childPath;
@@ -234,7 +283,7 @@ export function applyMarkSafely(
               foundStart = true;
               if (DEBUG) console.log(`Found start point in node ${i}, offset ${newStartOffset}`);
             }
-
+            
             // Check if this node contains our end point
             if (!foundEnd && currentOffset <= endOffset && endOffset <= nodeEndOffset) {
               newEndPath = childPath;
@@ -242,21 +291,21 @@ export function applyMarkSafely(
               foundEnd = true;
               if (DEBUG) console.log(`Found end point in node ${i}, offset ${newEndOffset}`);
             }
-
+            
             // If we found both points, we can stop
             if (foundStart && foundEnd) break;
-
+            
             // Move to next node
             currentOffset += length;
           }
-
+          
           // If we couldn't find our selection points, use fallbacks
           if (!foundStart) {
             newStartPath = [...blockPath, 0];
             newStartOffset = 0;
             if (DEBUG) console.log(`Using fallback for start point`);
           }
-
+          
           if (!foundEnd) {
             // If we have start but not end, put end at same position
             if (foundStart) {
@@ -270,28 +319,40 @@ export function applyMarkSafely(
             }
             if (DEBUG) console.log(`Using fallback for end point`);
           }
-
+          
           // Now create a proper selection object
           const newRange = {
             anchor: { path: isForward ? newStartPath : newEndPath, offset: isForward ? newStartOffset : newEndOffset },
             focus: { path: isForward ? newEndPath : newStartPath, offset: isForward ? newEndOffset : newStartOffset }
           };
-
+          
           // Apply the selection
           try {
             Transforms.select(editor, newRange);
             if (DEBUG) console.log(`Selection restored at:`, JSON.stringify(newRange));
-
+            
             // Save this as the last selection
             lastSelectionRef.current = editor.selection;
+            
+            // Update global selection state if available
+            if (typeof window !== 'undefined' && 
+                window.hasOwnProperty('_activeSlateEditor') && 
+                editorId) {
+              const globalState = (window as any)._activeSlateEditor;
+              globalState.selection = editor.selection;
+              globalState.timestamp = Date.now();
+            }
           } catch (selectErr) {
             console.error('Error restoring selection:', selectErr);
-
+            
             // Last resort fallback - just select start of paragraph
             try {
               const start = Editor.start(editor, blockPath);
               Transforms.select(editor, start);
               if (DEBUG) console.log('Used paragraph start as fallback selection');
+              
+              // Save this fallback as the last selection
+              lastSelectionRef.current = editor.selection;
             } catch (fallbackErr) {
               console.error('Failed to set fallback selection:', fallbackErr);
             }
@@ -306,4 +367,4 @@ export function applyMarkSafely(
   } catch (error) {
     console.error('applyMarkSafely error:', error);
   }
-}
+} 
