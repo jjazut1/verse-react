@@ -402,16 +402,51 @@ const SortCategoriesEggReveal: React.FC<SortCategoriesEggRevealProps> = ({
     }
 
     try {
+      // Create a clean categories array with exact structure required by rules
+      const formattedCategories = gameConfig.categories.map((category, index) => {
+        // Extract only the required fields and ensure correct types
+        const cleanCategory = {
+          name: String(category.name),
+          items: Array.isArray(category.items) 
+            ? category.items.map(item => String(item))
+            : []
+        };
+        
+        // Validate the category
+        if (!cleanCategory.name || cleanCategory.name.trim().length === 0) {
+          throw new Error(`Category ${index + 1} must have a name`);
+        }
+        if (cleanCategory.items.length === 0) {
+          throw new Error(`Category ${index + 1} must have at least one item`);
+        }
+        if (cleanCategory.items.length > 100) {
+          throw new Error(`Category ${index + 1} cannot have more than 100 items`);
+        }
+        
+        return cleanCategory;
+      });
+
+      // Validate number of categories
+      if (formattedCategories.length === 0) {
+        throw new Error('At least one category is required');
+      }
+      if (formattedCategories.length > 20) {
+        throw new Error('Cannot have more than 20 categories');
+      }
+
       const configData = {
         type: 'sort-categories-egg',
-        title: gameConfig.title,
-        eggQty: gameConfig.eggQty,
-        categories: gameConfig.categories,
-        share: gameConfig.share,
+        title: String(gameConfig.title || '').trim(),
+        eggQty: Number(gameConfig.eggQty) || 6,
+        categories: formattedCategories,
+        share: true,  // Explicitly set to true
         userId: auth.currentUser.uid,
-        email: auth.currentUser.email || undefined,
-        createdAt: Timestamp.fromDate(new Date())
+        email: auth.currentUser.email || null,
+        createdAt: serverTimestamp()
       };
+
+      // Log the exact data being sent
+      console.log('Saving configuration:', JSON.stringify(configData, null, 2));
 
       await addDoc(collection(db, 'userGameConfigs'), configData);
       toast({
@@ -425,7 +460,7 @@ const SortCategoriesEggReveal: React.FC<SortCategoriesEggRevealProps> = ({
       console.error('Error saving configuration:', error);
       toast({
         title: 'Error',
-        description: 'Could not save configuration. Please try again.',
+        description: error instanceof Error ? error.message : 'Could not save configuration. Please try again.',
         status: 'error',
         duration: 5000,
       });

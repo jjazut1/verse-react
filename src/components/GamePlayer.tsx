@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Container, Center, Spinner } from '@chakra-ui/react';
+import { Container, Center, Spinner, Text } from '@chakra-ui/react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import SortCategoriesEggRevealAdapter from './games/sort-categories-egg-reveal/SortCategoriesEggRevealAdapter';
+import WhackAMole from './games/whack-a-mole/WhackAMole';
 import { useCustomToast } from '../hooks/useCustomToast';
 import { GameConfig } from '../types/game';
 
@@ -80,13 +81,35 @@ const GamePlayer = () => {
     return null;
   }
 
+  const renderGame = () => {
+    switch (gameConfig.type) {
+      case 'whack-a-mole':
+        return (
+          <WhackAMole
+            playerName="Player"
+            onGameComplete={handleGameComplete}
+            config={gameConfig}
+          />
+        );
+      case 'sort-categories-egg':
+        return (
+          <SortCategoriesEggRevealAdapter
+            playerName="Player"
+            onGameComplete={handleGameComplete}
+            config={gameConfig}
+          />
+        );
+      default:
+        const _exhaustiveCheck: never = gameConfig;
+        return (
+          <Text>Invalid game configuration type: {(gameConfig as any).type}</Text>
+        );
+    }
+  };
+
   return (
     <Container maxW="container.xl" p={4}>
-      <SortCategoriesEggRevealAdapter
-        playerName="Player"
-        onGameComplete={handleGameComplete}
-        config={gameConfig}
-      />
+      {renderGame()}
     </Container>
   );
 };

@@ -1,0 +1,497 @@
+import React, { useMemo, useCallback, useState, useEffect, useRef, memo, forwardRef, useImperativeHandle } from 'react';
+import { createEditor, Descendant, Element as SlateElement, BaseEditor, Transforms, Editor, Node, Path, Range } from 'slate';
+import { Slate, Editable, withReact, useSlate, ReactEditor } from 'slate-react';
+import { withHistory } from 'slate-history';
+import { BiBold, BiItalic, BiUnderline } from 'react-icons/bi';
+import { MdSuperscript, MdSubscript } from 'react-icons/md';
+import isEqual from 'lodash/isEqual';
+import './SlateEditor.css';
+
+// For debugging selection issues
+const DEBUG = true;
+
+// Utility function to get the current leaf format state
+// This is more reliable than Editor.marks() when selection is collapsed
+const getCurrentLeafFormat = (editor: Editor): Record<string, any> => {
+  if (!editor.selection) return {};
+  
+  try {
+    // Get the leaf node at the current selection focus
+    const [node, path] = Editor.leaf(editor, editor.selection.focus);
+    if (!node) return {};
+    
+    if (DEBUG) console.log('Current leaf node format:', node);
+    
+    return node || {};
+  } catch (err) {
+    console.error('Error getting leaf format:', err);
+    return {};
+  }
+};
+
+// Types
+interface SlateEditorProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+  compact?: boolean;
+  showToolbar?: boolean;
+}
+
+type CustomText = {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  subscript?: boolean;
+  superscript?: boolean;
+};
+
+type CustomElement = {
+  type: 'paragraph';
+  children: CustomText[];
+};
+
+type CustomEditor = BaseEditor & ReactEditor;
+
+declare module 'slate' {
+  interface CustomTypes {
+    Editor: CustomEditor;
+    Element: CustomElement;
+    Text: CustomText;
+  }
+}
+
+// Define a custom interface for the ref
+interface SlateEditorRef extends HTMLDivElement {
+  focus: () => boolean;
+}
+
+// Update the SlateEditor component to use forwardRef
+export const SlateEditor = forwardRef<HTMLDivElement, SlateEditorProps>(({
+  value: inputValue,
+  onChange,
+  placeholder = '',
+  className = '',
+  compact = false,
+  showToolbar = true
+}, ref) => {
+  // Create editor with selection preservation
+  const editor = useMemo(() => {
+    const e = withHistory(withReact(createEditor()));
+    const { onChange: originalOnChange } = e;
+
+    e.onChange = () => {
+      if (DEBUG) {
+        console.log('Editor onChange called, selection:', e.selection);
+      }
+      originalOnChange();
+    };
+    return e;
+  }, []);
+
+  // Track initialization
+  const isInitialized = useRef(false);
+  const domRef = useRef<HTMLDivElement>(null);
+
+  // Expose a method to focus and position cursor at the beginning
+  useImperativeHandle(ref, () => {
+    const element = domRef.current as unknown as SlateEditorRef;
+    if (element) {
+      element.focus = () => {
+        try {
+          if (DEBUG) console.log('Imperative focus called');
+          // Focus the editor
+          ReactEditor.focus(editor);
+          // Set selection to the beginning
+          Transforms.select(editor, Editor.start(editor, []));
+          setIsFocused(true);
+          return true;
+        } catch (err) {
+          console.error('Error in imperative focus:', err);
+          return false;
+        }
+      };
+    }
+    return element as SlateEditorRef;
+  });
+
+  // Track last value received from props to avoid unnecessary rerenders
+  const lastPropValueRef = useRef(inputValue);
+
+  // Initialize with proper state
+  const [editorState, setEditorState] = useState<Descendant[]>(() => {
+    isInitialized.current = true;
+    const parsed = deserialize(inputValue);
+    lastPropValueRef.current = inputValue;
+    if (DEBUG) console.log('Initial editor state:', parsed);
+    return parsed;
+  });
+  
+  // Track last selection to restore it
+  const lastSelectionRef = useRef<any>(null);
+  
+  // Create a sticky ref for active marks to maintain state between renders
+  const activeMarksRef = useRef<Record<string, boolean>>({
+    bold: false, 
+    italic: false, 
+    underline: false, 
+    subscript: false, 
+    superscript: false
+  });
+  
+  // Track active marks for toolbar state
+  const [activeMarks, setActiveMarks] = useState<Record<string, boolean>>(activeMarksRef.current);
+
+  // Ensure we respond to focused state
+  const [isFocused, setIsFocused] = useState(false);
+  
+  // Track if we're currently interacting with toolbar
+  const isToolbarInteractionRef = useRef(false);
+  
+  // Track toolbar visibility
+  const [isToolbarVisible, setIsToolbarVisible] = useState(false);
+
+  // Track selection state
+  const [hasSelection, setHasSelection] = useState(false);
+  
+  // Update editor state only if the value from props changes significantly
+  useEffect(() => {
+    // Skip if value hasn't changed
+    if (inputValue === lastPropValueRef.current) {
+      return;
+    }
+    
+    // Skip if we're focused (user is typing)
+    if (isFocused) {
+      if (DEBUG) console.log('Skipping value update while editor is focused');
+      return;
+    }
+    
+    lastPropValueRef.current = inputValue;
+    const newState = deserialize(inputValue);
+    
+    // Save current selection before updating state
+    const currentSelection = editor.selection;
+    
+    if (DEBUG) console.log('Updating editor state from props:', newState);
+    
+    // Critical: Update the editor's children directly to avoid full remounts
+    // This is necessary because initialValue is only read on first mount
+    try {
+      // Replace the editor content with the new value
+      editor.children = newState;
+      // Notify Slate about the change
+      editor.onChange();
+      // Also update our state
+      setEditorState(newState);
+    } catch (err) {
+      console.error('Error updating editor content:', err);
+    }
+    
+    // Restore selection after state update if needed
+    if (currentSelection) {
+      setTimeout(() => {
+        try {
+          Transforms.select(editor, currentSelection);
+        } catch (e) {
+          console.error('Failed to restore selection after value update:', e);
+        }
+      }, 0);
+    }
+  }, [inputValue, editor, isFocused]);
+  
+  // Log when the component renders for debugging
+  useEffect(() => {
+    if (DEBUG) console.log('SlateEditor rendered, isFocused:', isFocused);
+  });
+
+  // This ensures we don't lose focus when interacting with toolbar buttons
+  useEffect(() => {
+    // Track if we're interacting with the toolbar
+    const handleMouseDown = (e: MouseEvent) => {
+      // Check if user clicked on a toolbar button or the toolbar itself
+      const targetEl = e.target as HTMLElement;
+      const isToolbarElement = 
+        targetEl.closest('.inline-toolbar') || 
+        targetEl.getAttribute('data-toolbar-button') === 'true';
+      
+      if (isToolbarElement) {
+        if (DEBUG) console.log('Toolbar interaction detected');
+        isToolbarInteractionRef.current = true;
+        
+        // Important: immediately restore focus to editor
+        setTimeout(() => {
+          try {
+            ReactEditor.focus(editor);
+            setIsFocused(true);
+          } catch (err) {
+            console.error('Error focusing after toolbar interaction', err);
+          }
+        }, 10);
+      }
+    };
+    
+    // Reset toolbar interaction flag when mouse is released
+    const handleMouseUp = () => {
+      if (isToolbarInteractionRef.current) {
+        if (DEBUG) console.log('Toolbar interaction complete');
+        isToolbarInteractionRef.current = false;
+      }
+    };
+    
+    // Add global listeners to track toolbar interactions
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [editor]);
+
+  // Ensure we maintain active marks and proper toolbar visibility
+  // This is especially important after format operations
+  useEffect(() => {
+    if (!editor.selection) return;
+    
+    // Get the current format from the leaf at cursor position
+    try {
+      const formatState = getCurrentLeafFormat(editor);
+      
+      // Update our marks tracking with the latest from the actual node
+      const updatedMarks = {
+        bold: !!formatState.bold,
+        italic: !!formatState.italic,
+        underline: !!formatState.underline,
+        subscript: !!formatState.subscript,
+        superscript: !!formatState.superscript,
+      };
+      
+      // Only update if values changed
+      if (!isEqual(activeMarksRef.current, updatedMarks)) {
+        if (DEBUG) console.log('Updating marks from selection change:', updatedMarks);
+        activeMarksRef.current = updatedMarks;
+        setActiveMarks(updatedMarks);
+      }
+      
+      // Ensure toolbar is visible when selection is present
+      if (!isToolbarVisible && isFocused) {
+        setIsToolbarVisible(true);
+      }
+    } catch (err) {
+      console.error('Error in selection effect:', err);
+    }
+  }, [editor.selection, editor, isToolbarVisible, isFocused]);
+
+  // Update handleChange to include onChange debugging
+  const handleChange = useCallback((newValue: Descendant[]) => {
+    // Update state through React's state management
+    setEditorState(newValue);
+
+    // Track the current selection for mark detection
+    const currentSelection = editor.selection;
+    
+    if (DEBUG) console.log('handleChange - selection:', currentSelection ? Range.isCollapsed(currentSelection) : 'null');
+
+    try {
+      // Update toolbar visibility
+      const hasActiveSelection = Boolean(currentSelection) || hasSelection;
+      setIsToolbarVisible(hasActiveSelection);
+      
+      // Get formatting state from the current leaf node at cursor
+      // This is more reliable than Editor.marks() when selection is collapsed
+      if (currentSelection) {
+        try {
+          // First try to get marks from the current leaf node
+          const formatState = getCurrentLeafFormat(editor);
+          
+          // Then try Editor.marks() as a fallback for expanded selections
+          let marks = formatState;
+          if (Range.isExpanded(currentSelection)) {
+            try {
+              const editorMarks = Editor.marks(editor) || {};
+              marks = { ...formatState, ...editorMarks };
+            } catch (err) {
+              // Use leaf format if Editor.marks() fails
+              console.error('Error getting marks:', err);
+            }
+          }
+          
+          // Create a record of boolean values for each mark type
+          const updatedMarks = {
+            bold: !!marks.bold,
+            italic: !!marks.italic,
+            underline: !!marks.underline,
+            subscript: !!marks.subscript,
+            superscript: !!marks.superscript,
+          };
+          
+          // Only update if values changed
+          if (!isEqual(activeMarksRef.current, updatedMarks)) {
+            if (DEBUG) console.log('Updating marks from selection change:', updatedMarks);
+            activeMarksRef.current = updatedMarks;
+            setActiveMarks(updatedMarks);
+          }
+        } catch (err) {
+          console.error('Error updating marks:', err);
+        }
+      }
+      
+      // Convert to HTML and update parent
+      const html = serialize(newValue);
+      if (DEBUG) console.log('Sending onChange to parent with HTML:', html, 'HTML length:', html.length);
+      onChange(html);
+    } catch (err) {
+      console.error('Error in handleChange:', err);
+    }
+  }, [editor, hasSelection, onChange]);
+
+  // Update handleFocus to restore selection
+  const handleFocus = useCallback(() => {
+    if (DEBUG) console.log('Editor focused');
+    setIsFocused(true);
+    
+    // Restore last selection if available
+    if (lastSelectionRef.current) {
+      try {
+        Transforms.select(editor, lastSelectionRef.current);
+      } catch (err) {
+        console.error('Error restoring selection on focus:', err);
+      }
+    }
+  }, [editor]);
+
+  // Update handleBlur to manage focus state
+  const handleBlur = useCallback(() => {
+    if (DEBUG) console.log('Editor blurred');
+    setIsFocused(false);
+    
+    // Prevent losing focus when interacting with toolbar
+    if (isToolbarInteractionRef.current) {
+      setTimeout(() => {
+        try {
+          ReactEditor.focus(editor);
+          setIsFocused(true);
+        } catch (err) {
+          console.error('Error refocusing editor after toolbar interaction:', err);
+        }
+      }, 10);
+    }
+  }, [editor]);
+
+  // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (DEBUG) console.log('Key pressed:', event.key);
+    
+    // Check if modifier key is pressed
+    const isMod = (event.metaKey || event.ctrlKey);
+    
+    // Implement standard formatting keyboard shortcuts
+    if (isMod) {
+      switch (event.key) {
+        case 'b': {
+          event.preventDefault();
+          const format = 'bold';
+          const isActive = activeMarks[format] || !!Editor.marks(editor)?.[format];
+          
+          if (isActive) {
+            Editor.removeMark(editor, format);
+            activeMarksRef.current.bold = false;
+          } else {
+            Editor.addMark(editor, format, true);
+            activeMarksRef.current.bold = true;
+          }
+          
+          setActiveMarks({...activeMarksRef.current});
+          break;
+        }
+        case 'i': {
+          event.preventDefault();
+          const format = 'italic';
+          const isActive = activeMarks[format] || !!Editor.marks(editor)?.[format];
+          
+          if (isActive) {
+            Editor.removeMark(editor, format);
+            activeMarksRef.current.italic = false;
+          } else {
+            Editor.addMark(editor, format, true);
+            activeMarksRef.current.italic = true;
+          }
+          
+          setActiveMarks({...activeMarksRef.current});
+          break;
+        }
+        case 'u': {
+          event.preventDefault();
+          const format = 'underline';
+          const isActive = activeMarks[format] || !!Editor.marks(editor)?.[format];
+          
+          if (isActive) {
+            Editor.removeMark(editor, format);
+            activeMarksRef.current.underline = false;
+          } else {
+            Editor.addMark(editor, format, true);
+            activeMarksRef.current.underline = true;
+          }
+          
+          setActiveMarks({...activeMarksRef.current});
+          break;
+        }
+      }
+    }
+    
+    // Force selection to be preserved during typing
+    if (lastSelectionRef.current) {
+      setTimeout(() => {
+        if (!editor.selection && isFocused) {
+          try {
+            if (DEBUG) console.log('Restoring selection after keypress');
+            Transforms.select(editor, lastSelectionRef.current);
+          } catch (e) {
+            console.error('Failed to restore selection after keypress:', e);
+          }
+        }
+      }, 0);
+    }
+  }, [editor, activeMarks, isFocused]);
+
+  return (
+    <div 
+      className={`slate-editor-container ${compact ? 'compact' : ''} ${className}`}
+      ref={domRef}
+      data-focused={isFocused || isToolbarInteractionRef.current}
+    >
+      <Slate 
+        editor={editor} 
+        initialValue={editorState} 
+        onChange={handleChange}
+        onSelectionChange={(selection) => {
+          if (DEBUG) console.log('Selection changed:', selection);
+        }}
+      >
+        <div className="slate-editor-with-toolbar">
+          <Editable
+            className="slate-editor"
+            placeholder={placeholder}
+            renderLeaf={(props) => <Leaf {...props} />}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            autoFocus={false}
+          />
+          {showToolbar && (
+            <div className="inline-toolbar always-visible">
+              <MarkButton format="bold" icon={<BiBold size={16} />} toolbarRef={isToolbarInteractionRef} activeMarks={activeMarks} lastSelectionRef={lastSelectionRef} activeMarksRef={activeMarksRef} setActiveMarks={setActiveMarks} />
+              <MarkButton format="italic" icon={<BiItalic size={16} />} toolbarRef={isToolbarInteractionRef} activeMarks={activeMarks} lastSelectionRef={lastSelectionRef} activeMarksRef={activeMarksRef} setActiveMarks={setActiveMarks} />
+              <MarkButton format="underline" icon={<BiUnderline size={16} />} toolbarRef={isToolbarInteractionRef} activeMarks={activeMarks} lastSelectionRef={lastSelectionRef} activeMarksRef={activeMarksRef} setActiveMarks={setActiveMarks} />
+              <MarkButton format="subscript" icon={<MdSubscript size={16} />} toolbarRef={isToolbarInteractionRef} activeMarks={activeMarks} lastSelectionRef={lastSelectionRef} activeMarksRef={activeMarksRef} setActiveMarks={setActiveMarks} />
+              <MarkButton format="superscript" icon={<MdSuperscript size={16} />} toolbarRef={isToolbarInteractionRef} activeMarks={activeMarks} lastSelectionRef={lastSelectionRef} activeMarksRef={activeMarksRef} setActiveMarks={setActiveMarks} />
+            </div>
+          )}
+        </div>
+      </Slate>
+    </div>
+  );
+});

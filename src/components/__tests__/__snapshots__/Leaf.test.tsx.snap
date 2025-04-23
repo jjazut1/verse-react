@@ -1,0 +1,91 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Leaf Component > renders all formatting combinations correctly 1`] = `
+<span
+  data-slate-leaf={true}
+>
+  <sup>
+    <sub>
+      <u>
+        <em>
+          <strong>
+            Text
+          </strong>
+        </em>
+      </u>
+    </sub>
+  </sup>
+</span>
+`;
+
+exports[`Leaf Component > renders bold text correctly 1`] = `
+<span
+  data-slate-leaf={true}
+>
+  <strong>
+    Text
+  </strong>
+</span>
+`;
+
+exports[`Leaf Component > renders combined marks correctly 1`] = `
+<span
+  data-slate-leaf={true}
+>
+  <u>
+    <em>
+      <strong>
+        Text
+      </strong>
+    </em>
+  </u>
+</span>
+`;
+
+exports[`Leaf Component > renders italic text correctly 1`] = `
+<span
+  data-slate-leaf={true}
+>
+  <em>
+    Text
+  </em>
+</span>
+`;
+
+exports[`Leaf Component > renders plain text correctly 1`] = `
+<span
+  data-slate-leaf={true}
+>
+  Text
+</span>
+`;
+
+exports[`Leaf Component > renders subscript text correctly 1`] = `
+<span
+  data-slate-leaf={true}
+>
+  <sub>
+    Text
+  </sub>
+</span>
+`;
+
+exports[`Leaf Component > renders superscript text correctly 1`] = `
+<span
+  data-slate-leaf={true}
+>
+  <sup>
+    Text
+  </sup>
+</span>
+`;
+
+exports[`Leaf Component > renders underline text correctly 1`] = `
+<span
+  data-slate-leaf={true}
+>
+  <u>
+    Text
+  </u>
+</span>
+`;

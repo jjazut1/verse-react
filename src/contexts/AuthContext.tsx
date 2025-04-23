@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { 
   GoogleAuthProvider, 
   signInWithPopup, 
@@ -9,21 +9,31 @@ import {
 import { auth } from '../config/firebase';
 
 interface AuthContextType {
-  currentUser: User | null;
-  isTeacher: boolean;
-  loginWithGoogle: () => Promise<void>;
+  currentUser: {
+    uid: string;
+    email: string | null;
+  } | null;
+  login: (email: string, password: string) => Promise<any>;
   logout: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  updateEmail: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
+  signup: (email: string, password: string) => Promise<any>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthContextType>({
+  currentUser: null,
+  login: async () => {},
+  logout: async () => {},
+  resetPassword: async () => {},
+  updateEmail: async () => {},
+  updatePassword: async () => {},
+  signup: async () => {}
+});
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+export const useAuth = () => {
+  return useContext(AuthContext);
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);

@@ -25,6 +25,8 @@ import {
   Textarea,
   Switch,
   HStack,
+  Select,
+  FormHelperText,
 } from '@chakra-ui/react';
 
 const SearchBar = ({ onSearch }: { onSearch: (query: string) => void }) => (
@@ -172,56 +174,119 @@ const ConfigurationModal = ({
       : [{ name: '', items: '' }]
   );
   const [shareConfig, setShareConfig] = useState(template?.share || false);
+
+  // Whack-a-mole specific state
+  const [gameTime, setGameTime] = useState(template?.gameTime || 30);
+  const [pointsPerHit, setPointsPerHit] = useState(template?.pointsPerHit || 10);
+  const [penaltyPoints, setPenaltyPoints] = useState(template?.penaltyPoints || 5);
+  const [bonusPoints, setBonusPoints] = useState(template?.bonusPoints || 10);
+  const [bonusThreshold, setBonusThreshold] = useState(template?.bonusThreshold || 3);
+  const [gameSpeed, setGameSpeed] = useState(template?.speed || 2);
+  const [instructions, setInstructions] = useState(template?.instructions || '');
+  const [wordCategories, setWordCategories] = useState<{ title: string; words: string[] }[]>(
+    template?.categories || [{ title: '', words: [] }]
+  );
+
   const { currentUser } = useAuth();
   const isOwnTemplate = template?.userId === currentUser?.uid;
+  const gameType = template?.type || 'sort-categories-egg';
 
   // Reset form when template changes
   useEffect(() => {
     if (template) {
       setTitle(template.title || '');
-      setEggQty(template.eggQty || 6);
-      setCategories(
-        template.categories 
-          ? template.categories.map((cat: any) => ({ 
-              name: cat.name, 
-              items: Array.isArray(cat.items) ? cat.items.join(', ') : cat.items 
-            }))
-          : [{ name: '', items: '' }]
-      );
       setShareConfig(template.share || false);
+
+      if (template.type === 'sort-categories-egg') {
+        setEggQty(template.eggQty || 6);
+        setCategories(
+          template.categories 
+            ? template.categories.map((cat: any) => ({ 
+                name: cat.name, 
+                items: Array.isArray(cat.items) ? cat.items.join(', ') : cat.items 
+              }))
+            : [{ name: '', items: '' }]
+        );
+      } else if (template.type === 'whack-a-mole') {
+        setGameTime(template.gameTime || 30);
+        setPointsPerHit(template.pointsPerHit || 10);
+        setPenaltyPoints(template.penaltyPoints || 5);
+        setBonusPoints(template.bonusPoints || 10);
+        setBonusThreshold(template.bonusThreshold || 3);
+        setGameSpeed(template.speed || 2);
+        setInstructions(template.instructions || '');
+        setWordCategories(template.categories || [{ title: '', words: [] }]);
+      }
     }
   }, [template]);
 
   const handleAddCategory = () => {
-    setCategories([...categories, { name: '', items: '' }]);
+    if (gameType === 'sort-categories-egg') {
+      setCategories([...categories, { name: '', items: '' }]);
+    } else {
+      setWordCategories([...wordCategories, { title: '', words: [] }]);
+    }
   };
 
   const handleCategoryChange = (index: number, field: 'name' | 'items', value: string) => {
-    const newCategories = [...categories];
-    newCategories[index][field] = value;
-    setCategories(newCategories);
+    if (gameType === 'sort-categories-egg') {
+      const newCategories = [...categories];
+      newCategories[index][field] = value;
+      setCategories(newCategories);
+    }
+  };
+
+  const handleWordCategoryChange = (index: number, field: 'title' | 'words', value: string) => {
+    const newCategories = [...wordCategories];
+    if (field === 'title') {
+      newCategories[index].title = value;
+    } else {
+      newCategories[index].words = value.split(',').map(word => word.trim());
+    }
+    setWordCategories(newCategories);
   };
 
   const handleSave = (isUpdate: boolean = false) => {
-    // Transform categories to ensure items is always an array
-    const transformedCategories = categories.map(cat => ({
-      name: (cat.name || '').trim(),
-      items: (cat.items || '').split(',')
-        .map(item => item.trim())
-        .filter(item => item.length > 0)
-    }));
+    let configData;
 
-    // Add the timestamp
-    const configData = {
-      title: title.trim(),
-      type: 'sort-categories-egg',
-      eggQty: eggQty,
-      categories: transformedCategories,
-      share: shareConfig,
-      email: currentUser.email,
-      userId: currentUser.uid,
-      createdAt: serverTimestamp() // Use Firestore's server timestamp
-    };
+    if (gameType === 'sort-categories-egg') {
+      // Transform categories to ensure items is always an array
+      const transformedCategories = categories.map(cat => ({
+        name: (cat.name || '').trim(),
+        items: (cat.items || '').split(',')
+          .map(item => item.trim())
+          .filter(item => item.length > 0)
+      }));
+
+      configData = {
+        title: title.trim(),
+        type: 'sort-categories-egg',
+        eggQty: eggQty,
+        categories: transformedCategories,
+        share: shareConfig,
+        email: currentUser?.email || '',
+        userId: currentUser?.uid || '',
+        createdAt: serverTimestamp()
+      };
+    } else {
+      // Whack-a-mole configuration
+      configData = {
+        title: title.trim(),
+        type: 'whack-a-mole',
+        gameTime,
+        pointsPerHit,
+        penaltyPoints,
+        bonusPoints,
+        bonusThreshold,
+        speed: gameSpeed,
+        instructions,
+        categories: wordCategories,
+        share: shareConfig,
+        email: currentUser?.email || '',
+        userId: currentUser?.uid || '',
+        createdAt: serverTimestamp()
+      };
+    }
 
     onSave(configData, isUpdate);
   };
@@ -243,42 +308,173 @@ const ConfigurationModal = ({
               />
             </FormControl>
 
-            <FormControl>
-              <FormLabel>Number of Eggs</FormLabel>
-              <NumberInput
-                value={eggQty}
-                onChange={(_, value) => setEggQty(value)}
-                min={1}
-                max={20}
-              >
-                <NumberInputField />
-                <NumberInputStepper>
-                  <NumberIncrementStepper />
-                  <NumberDecrementStepper />
-                </NumberInputStepper>
-              </NumberInput>
-            </FormControl>
+            {gameType === 'sort-categories-egg' ? (
+              // Sort Categories Egg Configuration
+              <>
+                <FormControl>
+                  <FormLabel>Number of Eggs</FormLabel>
+                  <NumberInput
+                    value={eggQty}
+                    onChange={(_, value) => setEggQty(value)}
+                    min={1}
+                    max={20}
+                  >
+                    <NumberInputField />
+                    <NumberInputStepper>
+                      <NumberIncrementStepper />
+                      <NumberDecrementStepper />
+                    </NumberInputStepper>
+                  </NumberInput>
+                </FormControl>
 
-            {categories.map((category, index) => (
-              <VStack key={index} w="100%" spacing={2}>
+                {categories.map((category, index) => (
+                  <VStack key={index} w="100%" spacing={2}>
+                    <FormControl>
+                      <FormLabel>Category {index + 1} Name</FormLabel>
+                      <Input
+                        value={category.name}
+                        onChange={(e) => handleCategoryChange(index, 'name', e.target.value)}
+                        placeholder="Category name"
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Items (comma-separated)</FormLabel>
+                      <Textarea
+                        value={category.items}
+                        onChange={(e) => handleCategoryChange(index, 'items', e.target.value)}
+                        placeholder="Item1, Item2, Item3"
+                      />
+                    </FormControl>
+                  </VStack>
+                ))}
+              </>
+            ) : (
+              // Whack-a-mole Configuration
+              <>
                 <FormControl>
-                  <FormLabel>Category {index + 1} Name</FormLabel>
-                  <Input
-                    value={category.name}
-                    onChange={(e) => handleCategoryChange(index, 'name', e.target.value)}
-                    placeholder="Category name"
-                  />
+                  <FormLabel>Game Time (seconds)</FormLabel>
+                  <NumberInput
+                    value={gameTime}
+                    onChange={(_, value) => setGameTime(value)}
+                    min={30}
+                    max={300}
+                  >
+                    <NumberInputField />
+                    <NumberInputStepper>
+                      <NumberIncrementStepper />
+                      <NumberDecrementStepper />
+                    </NumberInputStepper>
+                  </NumberInput>
                 </FormControl>
+
                 <FormControl>
-                  <FormLabel>Items (comma-separated)</FormLabel>
+                  <FormLabel>Game Speed</FormLabel>
+                  <Select
+                    value={gameSpeed}
+                    onChange={(e) => setGameSpeed(Number(e.target.value))}
+                  >
+                    <option value={1}>Slow (10-12 moles)</option>
+                    <option value={2}>Medium (14-16 moles)</option>
+                    <option value={3}>Fast (17-19 moles)</option>
+                  </Select>
+                  <FormHelperText>Controls how frequently moles appear during the game</FormHelperText>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Game Instructions</FormLabel>
                   <Textarea
-                    value={category.items}
-                    onChange={(e) => handleCategoryChange(index, 'items', e.target.value)}
-                    placeholder="Item1, Item2, Item3"
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="Enter custom instructions shown to players (optional)"
+                    rows={3}
                   />
+                  <FormHelperText>
+                    Custom instructions to show on the game start screen. If left empty, default instructions will be shown.
+                  </FormHelperText>
                 </FormControl>
-              </VStack>
-            ))}
+
+                <FormControl>
+                  <FormLabel>Points Per Hit</FormLabel>
+                  <NumberInput
+                    value={pointsPerHit}
+                    onChange={(_, value) => setPointsPerHit(value)}
+                    min={1}
+                  >
+                    <NumberInputField />
+                    <NumberInputStepper>
+                      <NumberIncrementStepper />
+                      <NumberDecrementStepper />
+                    </NumberInputStepper>
+                  </NumberInput>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Penalty Points</FormLabel>
+                  <NumberInput
+                    value={penaltyPoints}
+                    onChange={(_, value) => setPenaltyPoints(value)}
+                    min={0}
+                  >
+                    <NumberInputField />
+                    <NumberInputStepper>
+                      <NumberIncrementStepper />
+                      <NumberDecrementStepper />
+                    </NumberInputStepper>
+                  </NumberInput>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Bonus Points</FormLabel>
+                  <NumberInput
+                    value={bonusPoints}
+                    onChange={(_, value) => setBonusPoints(value)}
+                    min={0}
+                  >
+                    <NumberInputField />
+                    <NumberInputStepper>
+                      <NumberIncrementStepper />
+                      <NumberDecrementStepper />
+                    </NumberInputStepper>
+                  </NumberInput>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Bonus Threshold</FormLabel>
+                  <NumberInput
+                    value={bonusThreshold}
+                    onChange={(_, value) => setBonusThreshold(value)}
+                    min={1}
+                  >
+                    <NumberInputField />
+                    <NumberInputStepper>
+                      <NumberIncrementStepper />
+                      <NumberDecrementStepper />
+                    </NumberInputStepper>
+                  </NumberInput>
+                </FormControl>
+
+                {wordCategories.map((category, index) => (
+                  <VStack key={index} w="100%" spacing={2}>
+                    <FormControl>
+                      <FormLabel>Category {index + 1} Title</FormLabel>
+                      <Input
+                        value={category.title}
+                        onChange={(e) => handleWordCategoryChange(index, 'title', e.target.value)}
+                        placeholder="Category title"
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Words (comma-separated)</FormLabel>
+                      <Textarea
+                        value={category.words.join(', ')}
+                        onChange={(e) => handleWordCategoryChange(index, 'words', e.target.value)}
+                        placeholder="word1, word2, word3"
+                      />
+                    </FormControl>
+                  </VStack>
+                ))}
+              </>
+            )}
 
             <Button onClick={handleAddCategory} colorScheme="blue" width="100%">
               Add Category
@@ -370,7 +566,7 @@ const Home = () => {
         const games = publicSnapshot.docs.map(doc => ({
           id: doc.id,
           title: doc.data().title || 'Untitled Game',
-          type: 'sort-categories-egg',
+          type: doc.data().type || 'sort-categories-egg',
           thumbnail: doc.data().thumbnail || undefined
         }));
         setPublicGames(games);
@@ -379,7 +575,7 @@ const Home = () => {
         const templates = templatesSnapshot.docs.map(doc => ({
           id: doc.id,
           title: doc.data().title || 'Untitled Template',
-          type: 'sort-categories-egg',
+          type: doc.data().type || 'sort-categories-egg',
           thumbnail: doc.data().thumbnail,
           userId: doc.data().userId,
           categories: doc.data().categories || [],
@@ -389,15 +585,26 @@ const Home = () => {
         setModifiableTemplates(templates);
 
         // Process blank templates
-        const blankTemplatesData = blankTemplatesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          title: doc.data().title || 'Untitled Template',
-          type: doc.data().type || 'sort-categories-egg',
-          thumbnail: doc.data().thumbnail,
-          categories: doc.data().categories || [],
-          eggQty: doc.data().eggQty || 6,
-          share: doc.data().share || false
-        }));
+        const blankTemplatesData = blankTemplatesSnapshot.docs.map(doc => {
+          // Ensure blank templates have a valid game type
+          let type = doc.data().type || 'sort-categories-egg';
+          
+          // Make sure the type is one of our supported game types
+          if (type !== 'whack-a-mole' && type !== 'sort-categories-egg') {
+            // Default to sort-categories-egg if type is not supported
+            type = 'sort-categories-egg';
+          }
+          
+          return {
+            id: doc.id,
+            title: doc.data().title || 'Untitled Template',
+            type: type, // Use the validated type
+            thumbnail: doc.data().thumbnail,
+            categories: doc.data().categories || [],
+            eggQty: doc.data().eggQty || 6,
+            share: doc.data().share || false
+          };
+        });
         setBlankTemplates(blankTemplatesData);
 
       } catch (error: any) {
@@ -440,13 +647,13 @@ const Home = () => {
     { 
       id: 1, 
       title: 'Blank Quiz Builder', 
-      type: 'Quiz Builder',
+      type: 'sort-categories-egg',
       thumbnail: '/game-thumbnails/blank-quiz.png'
     },
     { 
       id: 2, 
       title: 'Empty Game Canvas', 
-      type: 'Game Canvas',
+      type: 'whack-a-mole',
       thumbnail: '/game-thumbnails/blank-canvas.png'
     },
   ];
@@ -472,21 +679,36 @@ const Home = () => {
       return;
     }
 
-    // If it's a blank template, we'll create a new configuration based on the template
-    if (isBlankTemplate) {
-      const newTemplate = {
-        ...template,
-        id: undefined, // Remove the template ID so a new one will be generated
-        userId: currentUser.uid,
-        email: currentUser.email,
-        createdAt: new Date().toISOString()
-      };
-      setSelectedTemplate(newTemplate);
-    } else {
-      setSelectedTemplate(template);
+    // Ensure template has a valid type
+    let templateType = template.type || 'sort-categories-egg';
+    if (templateType !== 'whack-a-mole' && templateType !== 'sort-categories-egg') {
+      templateType = 'sort-categories-egg'; // Default to sort-categories-egg
     }
-    setIsConfigModalOpen(true);
+
+    // Navigate to the appropriate configuration page based on game type
+    if (templateType === 'whack-a-mole' || templateType === 'sort-categories-egg') {
+      // For games with dedicated config pages, navigate to the appropriate route
+      if (template.id) {
+        navigate(`/configure/${templateType}/${template.id}`);
+      } else {
+        navigate(`/configure/${templateType}`);
+      }
+    } else {
+      // For other game types that still use the modal
+      setSelectedTemplate({...template, type: templateType});
+      setIsConfigModalOpen(true);
+    }
   };
+
+  interface Category {
+    name: string;
+    items: string[];
+  }
+
+  interface WordCategory {
+    title: string;
+    words: string[];
+  }
 
   const handleSaveConfig = async (config: any, isUpdate: boolean) => {
     try {
@@ -494,91 +716,96 @@ const Home = () => {
         throw new Error('You must be signed in to save configurations');
       }
 
-      // Ensure categories are properly formatted
-      const formattedCategories = config.categories.map((cat: any) => ({
-        name: cat.name.trim(),
-        items: Array.isArray(cat.items) ? cat.items : cat.items.split(',').map((item: string) => item.trim()).filter(Boolean)
-      }));
+      let formattedCategories: Category[] | WordCategory[];
+      let baseConfigData: any;
 
-      // Validate categories
-      if (formattedCategories.some((cat: { name: string; items: string[] }) => !cat.name || !cat.items.length)) {
-        throw new Error('All categories must have a name and at least one item');
-      }
+      if (config.type === 'whack-a-mole') {
+        // Format whack-a-mole categories
+        formattedCategories = (config.categories || []).map((cat: { title?: string; words?: string | string[] }) => ({
+          title: (cat.title || '').trim(),
+          words: typeof cat.words === 'string' 
+            ? cat.words.split(',').map(word => word.trim()).filter(Boolean)
+            : (cat.words || []).map(word => word.trim()).filter(Boolean)
+        })).filter((cat: WordCategory) => cat.title && cat.words.length > 0);
 
-      const baseConfigData = {
-        title: config.title.trim(),
-        type: 'sort-categories-egg',
-        eggQty: Number(config.eggQty),
-        categories: formattedCategories,
-        share: Boolean(config.share),
-        userId: currentUser.uid,
-        email: currentUser.email || null,
-        createdAt: new Date().toISOString()
-      };
+        if (formattedCategories.length === 0) {
+          throw new Error('Each category must have a title and at least one word');
+        }
 
-      console.log('Attempting to save configuration with data:', {
-        title: baseConfigData.title,
-        type: baseConfigData.type,
-        eggQty: baseConfigData.eggQty,
-        categories: baseConfigData.categories,
-        share: baseConfigData.share,
-        userId: baseConfigData.userId,
-        email: baseConfigData.email
-      });
-
-      if (isUpdate && config.id) {
-        // Update existing configuration
-        await updateDoc(doc(db, 'userGameConfigs', config.id), {
-          ...baseConfigData,
-          updatedAt: serverTimestamp()
-        });
-
-        // Delete all high scores for this configuration
-        const highScoresQuery = query(
-          collection(db, 'highScores'),
-          where('configId', '==', config.id)
-        );
-        const highScoresSnapshot = await getDocs(highScoresQuery);
-        const deletePromises = highScoresSnapshot.docs.map(doc => 
-          deleteDoc(doc.ref)
-        );
-        await Promise.all(deletePromises);
-
-        toast({
-          title: 'Configuration Updated',
-          description: 'Configuration updated and high scores reset',
-          status: 'success',
-          duration: 3000,
-        });
-      } else {
-        // Save as new configuration
-        const newConfigData = {
-          ...baseConfigData,
+        baseConfigData = {
+          title: (config.title || '').trim(),
+          type: 'whack-a-mole',
+          gameTime: Number(config.gameTime) || 30,
+          pointsPerHit: Number(config.pointsPerHit) || 10,
+          penaltyPoints: Number(config.penaltyPoints) || 5,
+          bonusPoints: Number(config.bonusPoints) || 10,
+          bonusThreshold: Number(config.bonusThreshold) || 3,
+          speed: Number(config.speed) || 2,
+          instructions: config.instructions || '',
+          categories: formattedCategories,
+          share: Boolean(config.share),
+          userId: currentUser?.uid || '',
+          email: currentUser?.email || null,
           createdAt: serverTimestamp()
         };
 
-        // Validate required fields
-        if (!newConfigData.title) {
-          throw new Error('Title is required');
+        console.log('Saving whack-a-mole configuration:', baseConfigData);
+
+        if (isUpdate && config.id) {
+          await updateDoc(doc(db, 'userGameConfigs', config.id), {
+            ...baseConfigData,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          const docRef = await addDoc(collection(db, 'userGameConfigs'), baseConfigData);
+          config.id = docRef.id;
         }
-        if (!newConfigData.eggQty || newConfigData.eggQty <= 0) {
-          throw new Error('Number of eggs must be greater than 0');
-        }
-        if (!newConfigData.categories || newConfigData.categories.length === 0) {
-          throw new Error('At least one category is required');
+      } else {
+        // Format sort-categories-egg categories
+        formattedCategories = (config.categories || []).map((cat: { name?: string; items?: string | string[] }) => {
+          const name = (cat.name || '').trim();
+          const items = Array.isArray(cat.items) 
+            ? cat.items.map(item => (item || '').trim()).filter(Boolean)
+            : (cat.items || '').split(',').map(item => item.trim()).filter(Boolean);
+          return { name, items };
+        }).filter((cat: { name: string; items: string[] }): cat is Category => Boolean(cat.name && cat.items.length > 0));
+
+        if (formattedCategories.length === 0) {
+          throw new Error('All categories must have a name and at least one item');
         }
 
-        console.log('Saving new configuration:', newConfigData);
-        const docRef = await addDoc(collection(db, 'userGameConfigs'), newConfigData);
-        config.id = docRef.id;
+        baseConfigData = {
+          title: (config.title || '').trim(),
+          type: 'sort-categories-egg',
+          eggQty: Number(config.eggQty) || 6,
+          categories: formattedCategories,
+          share: Boolean(config.share),
+          userId: currentUser?.uid || '',
+          email: currentUser?.email || null,
+          createdAt: serverTimestamp()
+        };
 
-        toast({
-          title: 'Success',
-          description: 'New configuration saved successfully',
-          status: 'success',
-          duration: 3000,
-        });
+        console.log('Saving sort-categories-egg configuration:', baseConfigData);
+
+        if (isUpdate && config.id) {
+          await updateDoc(doc(db, 'userGameConfigs', config.id), {
+            ...baseConfigData,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          const docRef = await addDoc(collection(db, 'userGameConfigs'), baseConfigData);
+          config.id = docRef.id;
+        }
       }
+
+      toast({
+        title: isUpdate ? 'Configuration Updated' : 'Success',
+        description: isUpdate 
+          ? 'Configuration updated successfully' 
+          : 'New configuration saved successfully',
+        status: 'success',
+        duration: 3000,
+      });
 
       // Close modal and navigate to the game
       setIsConfigModalOpen(false);

@@ -17,20 +17,7 @@ import MathQuiz from './games/MathQuiz';
 import SyllableEggHuntAdapter from './games/syllable-egg-hunt/SyllableEggHuntAdapter';
 import SortCategoriesEggRevealAdapter from './games/sort-categories-egg-reveal/SortCategoriesEggRevealAdapter';
 import { useCustomToast, ToastComponent } from '../hooks/useCustomToast';
-import { GameConfig as BaseGameConfig } from '../types/game';
-
-interface GameConfig extends Omit<BaseGameConfig, 'eggQty' | 'categories'> {
-  id?: string;
-  title: string;
-  type: string;
-  eggQty: number;
-  categories: {
-    name: string;
-    items: string[];
-  }[];
-  share: boolean;
-  email?: string;
-}
+import { GameConfig } from '../types/game';
 
 interface Game {
   id: string;

@@ -17,6 +17,8 @@ import {
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db, auth } from '../../../config/firebase';
 import { serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../../../contexts/AuthContext';
+import { MAX_ITEMS_PER_CATEGORY, MIN_ITEMS_PER_CATEGORY, MAX_CATEGORIES, MIN_CATEGORIES } from '../../../constants/game';
 
 interface GameConfigProps {
   isOpen: boolean;
@@ -193,6 +195,30 @@ const GameConfig: React.FC<GameConfigProps> = ({ isOpen, onClose, onConfigSelect
           .map(item => item.trim())
           .filter(item => item.length > 0)
       }));
+
+      // Check if each category has at least MIN_ITEMS_PER_CATEGORY items
+      const categoriesWithTooFewItems = transformedCategories.filter(cat => cat.items.length < MIN_ITEMS_PER_CATEGORY);
+      if (categoriesWithTooFewItems.length > 0) {
+        toast({
+          title: "Not Enough Items",
+          description: `Each category must have at least ${MIN_ITEMS_PER_CATEGORY} items.`,
+          status: "warning",
+          duration: 5000,
+        });
+        return;
+      }
+      
+      // Check if any category has more than MAX_ITEMS_PER_CATEGORY items
+      const categoriesWithTooManyItems = transformedCategories.filter(cat => cat.items.length > MAX_ITEMS_PER_CATEGORY);
+      if (categoriesWithTooManyItems.length > 0) {
+        toast({
+          title: "Too Many Items",
+          description: `A category cannot have more than ${MAX_ITEMS_PER_CATEGORY} items.`,
+          status: "warning",
+          duration: 5000,
+        });
+        return;
+      }
 
       const configData = {
         type: 'sort-categories-egg',

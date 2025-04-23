@@ -1,0 +1,988 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import {
+  VStack,
+  FormControl,
+  FormLabel,
+  FormHelperText,
+  Input,
+  Textarea,
+  NumberInput,
+  NumberInputField,
+  NumberInputStepper,
+  NumberIncrementStepper,
+  NumberDecrementStepper,
+  Switch,
+  Button,
+  Heading,
+  Box,
+  Divider,
+  useToast,
+  Text,
+  HStack,
+  IconButton,
+  Flex,
+  ButtonGroup,
+  Tooltip,
+  Spinner,
+  Select,
+} from '@chakra-ui/react';
+import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { serverTimestamp } from 'firebase/firestore';
+import { AddIcon, ChevronUpIcon, ChevronDownIcon, DeleteIcon } from '@chakra-ui/icons';
+import SlateEditor from '../../components/SlateEditor';
+import { MAX_ITEMS_PER_CATEGORY, MIN_ITEMS_PER_CATEGORY, MAX_CATEGORIES, MIN_CATEGORIES } from '../../constants/game';
+
+interface CategoryTemplate {
+  title: string;
+  categories: Array<{ name: string; items: string[] }>;
+  eggQty?: number;
+}
+
+interface Category {
+  name: string;
+  items: string[];
+}
+
+// Default categories to use as fallback if database fetch fails
+const DEFAULT_CATEGORIES: Record<string, CategoryTemplate> = {
+  animals: {
+    title: "Animals",
+    categories: [
+      { name: "Mammals", items: ["dog", "cat", "elephant", "lion", "monkey", "tiger", "bear", "giraffe", "zebra", "kangaroo"] },
+      { name: "Birds", items: ["eagle", "sparrow", "penguin", "ostrich", "owl", "parrot", "crow", "chicken", "duck", "flamingo"] },
+      { name: "Reptiles", items: ["snake", "lizard", "turtle", "crocodile", "alligator", "iguana", "chameleon", "gecko", "cobra", "python"] }
+    ],
+    eggQty: 12
+  },
+  colors: {
+    title: "Colors",
+    categories: [
+      { name: "Warm Colors", items: ["red", "orange", "yellow", "pink", "brown", "maroon", "coral", "gold", "amber", "peach"] },
+      { name: "Cool Colors", items: ["blue", "green", "purple", "indigo", "violet", "teal", "cyan", "navy", "mint", "turquoise"] }
+    ],
+    eggQty: 10
+  },
+  food: {
+    title: "Food",
+    categories: [
+      { name: "Fruits", items: ["apple", "banana", "orange", "grape", "strawberry", "pear", "watermelon", "kiwi", "mango", "peach"] },
+      { name: "Vegetables", items: ["carrot", "tomato", "lettuce", "potato", "onion", "broccoli", "cucumber", "spinach", "pepper", "corn"] },
+      { name: "Grains", items: ["rice", "wheat", "oats", "barley", "quinoa", "corn", "millet", "rye", "buckwheat", "pasta"] }
+    ],
+    eggQty: 15
+  }
+};
+
+// Add interface for the outlet context
+interface OutletContextType {
+  onError?: (message: string) => void;
+}
+
+// Add these styles to the top of the file where other styles are defined
+const rowStyles = `
+  .item-row,
+  .category-name-row {
+    position: relative;
+    transition: all 0.2s ease;
+  }
+  
+  .item-row:hover, 
+  .item-row:focus-within,
+  .category-name-row:hover,
+  .category-name-row:focus-within {
+    background-color: #F7FAFF;
+  }
+  
+  .item-tools,
+  .category-tools {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  
+  .item-row:hover .item-tools,
+  .item-row:focus-within .item-tools,
+  .category-name-row:hover .category-tools,
+  .category-name-row:focus-within .category-tools {
+    opacity: 1;
+  }
+  
+  /* Better visibility for the active row */
+  .item-row.active,
+  .category-name-row.active {
+    background-color: #F0F7FF;
+    border-radius: 4px;
+  }
+  
+  /* Make the item row background match the exact height of the editor */
+  .item-row.active > .chakra-flex {
+    background-color: #F0F7FF;
+    border-radius: 4px;
+    padding: 2px 4px;
+  }
+  
+  /* Ensure the inner flex container takes full height */
+  .item-row .chakra-flex {
+    min-height: 36px;
+    align-items: center;
+  }
+  
+  /* Make buttons more compact in the row */
+  .item-tools .chakra-button,
+  .category-tools .chakra-button {
+    padding: 0;
+    min-width: 28px;
+    height: 28px;
+  }
+`;
+
+// Add some CSS at the top of the file
+const styles = `
+  .empty-input:before {
+    content: attr(data-placeholder);
+    color: #CBD5E0;
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+  
+  /* Add styling for active category */
+  .category-box {
+    transition: all 0.2s ease;
+    border: 1px solid #E2E8F0;
+  }
+  
+  .category-box:focus-within {
+    border-color: #007AFF;
+    box-shadow: 0 0 0 1px #007AFF;
+    background-color: #F7FAFF;
+  }
+`;
+
+// Add this near the other styles at the top or where appropriate
+const appleStyleButton = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '4px 8px',
+  borderRadius: '6px',
+  fontSize: '14px',
+  fontWeight: '500',
+  backgroundColor: 'white',
+  border: '1px solid #d1d5db',
+  color: '#374151',
+  transition: 'all 0.2s ease',
+  _hover: {
+    backgroundColor: '#f9fafb',
+    borderColor: '#9ca3af',
+  },
+  _active: {
+    backgroundColor: '#f3f4f6',
+    transform: 'scale(0.98)',
+  }
+}
+
+const appleStyleIconButton = {
+  ...appleStyleButton,
+  width: '32px',
+  height: '32px',
+  padding: '0',
+  minWidth: 'auto',
+}
+
+const appleStyleDangerButton = {
+  ...appleStyleButton,
+  backgroundColor: 'white',
+  color: '#DC2626',
+  borderColor: '#FECACA',
+  _hover: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  }
+}
+
+// Move the delete handler outside the component to avoid HMR issues
+const deleteItemFromCategory = (
+  categories: Category[],
+  categoryIndex: number,
+  itemIndex: number
+): Category[] => {
+  console.log(`=== Starting delete operation ===`);
+  console.log(`Target: Item #${itemIndex + 1} (array index: ${itemIndex}) in Category #${categoryIndex + 1} (array index: ${categoryIndex})`);
+  
+  // Create a new copy of categories
+  const newCategories = [...categories];
+  const category = {...newCategories[categoryIndex]};
+  const items = [...category.items];
+  
+  console.log('Current items before deletion:', items);
+  console.log(`Removing item at index ${itemIndex}:`, items[itemIndex]);
+  
+  // Remove the item
+  items.splice(itemIndex, 1);
+  
+  // Add empty item if needed
+  if (items.length === 0) {
+    console.log('Adding empty item to maintain structure');
+    items.push('');
+  }
+  
+  console.log('Items after deletion:', items);
+  
+  // Update the category with new items
+  category.items = items;
+  newCategories[categoryIndex] = category;
+  
+  console.log('=== Delete operation completed ===');
+  return newCategories;
+};
+
+// Define a custom interface for the ref to match SlateEditor
+interface SlateEditorRef extends HTMLDivElement {
+  focus: () => boolean;
+}
+
+// Helper function to debug item content
+const debugItemContent = (itemContent: string) => {
+  console.log('Item content inspection:');
+  console.log('- String length:', itemContent.length);
+  console.log('- Is empty string:', itemContent === '');
+  console.log('- After trim length:', itemContent.trim().length);
+  console.log('- Character codes:', Array.from(itemContent).map(c => c.charCodeAt(0)));
+  console.log('- Content as JSON:', JSON.stringify(itemContent));
+  return itemContent && itemContent.trim().length > 0;
+};
+
+const SortCategoriesEggConfig = () => {
+  const { templateId } = useParams();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { currentUser } = useAuth();
+  const { onError } = useOutletContext<OutletContextType>();
+
+  // Form state
+  const [title, setTitle] = useState('');
+  const [eggQty, setEggQty] = useState(6);
+  const [shareConfig, setShareConfig] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [templateKey, setTemplateKey] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  
+  // Category templates state
+  const [dbTemplates, setDbTemplates] = useState<Record<string, CategoryTemplate>>({});
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  
+  // Category management
+  const [categories, setCategories] = useState<Category[]>([
+    { name: '', items: [''] }
+  ]);
+
+  // Update the ref declaration
+  const newItemRef = useRef<SlateEditorRef>(null);
+
+  // Add a useRef to track item IDs
+  const itemIdsRef = useRef<Record<string, string>>({});
+  const nextIdRef = useRef(1);
+
+  // Add category ID tracking similar to item IDs
+  const categoryIdsRef = useRef<Record<number, string>>({});
+  const nextCategoryIdRef = useRef(1);
+
+  // Add state to track the active item
+  const [activeItem, setActiveItem] = useState<{categoryIndex: number | null; itemIndex: number | null}>({
+    categoryIndex: null,
+    itemIndex: null
+  });
+
+  // Check if user is an admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!currentUser || !currentUser.email) {
+        console.log('No current user or email');
+        return;
+      }
+      
+      try {
+        // Normalize the email to lowercase for comparison
+        const userEmail = currentUser.email.toLowerCase();
+        console.log('Checking admin status for:', userEmail);
+        
+        // Check if user exists in adminUsers collection
+        const adminUsersRef = collection(db, 'adminUsers');
+        const q = query(adminUsersRef, where('email', '==', userEmail));
+        const querySnapshot = await getDocs(q);
+        
+        console.log('Admin query result count:', querySnapshot.size);
+        
+        if (!querySnapshot.empty) {
+          const adminData = querySnapshot.docs[0].data();
+          console.log('Admin data found:', adminData);
+          // If they have a role of admin, set isAdmin to true
+          if (adminData.role === 'admin') {
+            console.log('User is an admin!');
+            setIsAdmin(true);
+          } else {
+            console.log('User found but role is not admin:', adminData.role);
+          }
+        } else {
+          // Let's also try a more general query to see what admin emails exist
+          const allAdminsSnapshot = await getDocs(collection(db, 'adminUsers'));
+          console.log('All admin users:');
+          allAdminsSnapshot.forEach(doc => {
+            console.log('- Email:', doc.data().email, 'Role:', doc.data().role);
+          });
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+      }
+    };
+    
+    checkAdminStatus();
+  }, [currentUser]);
+
+  // Load category templates from database
+  useEffect(() => {
+    const fetchCategoryTemplates = async () => {
+      setLoadingTemplates(true);
+      try {
+        // Query the categoryTemplates collection for 'sort-categories-egg' type templates
+        const templatesQuery = query(
+          collection(db, 'categoryTemplates'),
+          where('type', '==', 'sort-categories-egg')
+        );
+        
+        const querySnapshot = await getDocs(templatesQuery);
+        const templates: Record<string, CategoryTemplate> = {};
+        
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          templates[doc.id] = {
+            title: data.title || 'Untitled Template',
+            categories: Array.isArray(data.categories) ? data.categories : [],
+            eggQty: data.eggQty || 6
+          };
+        });
+        
+        // If we found templates in the database, use those
+        if (Object.keys(templates).length > 0) {
+          setDbTemplates(templates);
+          
+          // Auto-select if there's only one template or if we have a URL fragment
+          const fragment = window.location.hash.replace('#', '');
+          
+          // Check if we should auto-select a template
+          if (Object.keys(templates).length === 1) {
+            // If there's only one template, select it
+            const templateId = Object.keys(templates)[0];
+            setTemplateKey(templateId);
+            applyTemplate(templates[templateId]);
+          } else if (fragment && templates[fragment]) {
+            // If URL contains a fragment matching a template ID, select it
+            setTemplateKey(fragment);
+            applyTemplate(templates[fragment]);
+          }
+        } else {
+          // Otherwise use the default templates as fallback
+          setDbTemplates(DEFAULT_CATEGORIES);
+        }
+      } catch (error) {
+        console.error('Error fetching category templates:', error);
+        // Use default templates on error
+        setDbTemplates(DEFAULT_CATEGORIES);
+        toast({
+          title: 'Error loading templates',
+          description: 'Using default templates instead.',
+          status: 'warning',
+          duration: 3000,
+        });
+      } finally {
+        setLoadingTemplates(false);
+      }
+    };
+    
+    fetchCategoryTemplates();
+  }, [toast]);
+  
+  // Helper function to apply a template to the form
+  const applyTemplate = (templateData: CategoryTemplate) => {
+    if (!templateData) return;
+    
+    // Set the title and eggQty
+    setTitle(templateData.title || 'Untitled Template');
+    setEggQty(templateData.eggQty || 6);
+    
+    // Ensure categories is properly formatted
+    const sanitizedCategories = (templateData.categories || []).map(cat => ({
+      name: cat?.name || '',
+      items: Array.isArray(cat?.items) ? 
+        // Filter out null/undefined items and ensure strings
+        cat.items.filter(Boolean).map(item => item) : 
+        [''] // Default to empty array with one empty string
+    }));
+    
+    // If there are no categories, add a default empty one
+    if (sanitizedCategories.length === 0) {
+      sanitizedCategories.push({ name: '', items: [''] } as Category);
+    }
+    
+    setCategories(sanitizedCategories);
+  };
+
+  // Load existing configuration if templateId is provided
+  useEffect(() => {
+    const loadTemplate = async () => {
+      // If no templateId, this is a new configuration - no need to load anything
+      if (!templateId) return;
+      
+      setIsLoading(true);
+      try {
+        const docRef = doc(db, 'userGameConfigs', templateId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          
+          // Check if the user has permission to edit this config
+          if (data.userId !== currentUser?.uid) {
+            // If not the owner, create a copy instead of editing
+            setIsEditing(false);
+            toast({
+              title: "Creating a copy",
+              description: "You're not the owner of this configuration, so you'll create a copy instead.",
+              status: "info",
+              duration: 5000,
+            });
+          } else {
+            setIsEditing(true);
+          }
+
+          // Populate form fields
+          setTitle(data.title || '');
+          setEggQty(data.eggQty || 6);
+          setShareConfig(data.share || false);
+          
+          // Handle categories
+          if (data.categories && Array.isArray(data.categories)) {
+            const loadedCategories = data.categories.map((cat: string) => ({
+              name: cat || '',
+              items: [cat]
+            }));
+            setCategories(loadedCategories);
+          }
+        } else {
+          // Use the parent's error handler if available, otherwise fall back to toast
+          if (onError) {
+            onError("The requested configuration could not be found.");
+          } else {
+            toast({
+              title: "Configuration not found",
+              description: "The requested configuration could not be found.",
+              status: "error",
+              duration: 5000,
+            });
+          }
+          navigate('/configure/sort-categories-egg');
+        }
+      } catch (error) {
+        console.error("Error loading configuration:", error);
+        // Use the parent's error handler if available, otherwise fall back to toast
+        if (onError) {
+          onError("Failed to load the configuration.");
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to load the configuration.",
+            status: "error",
+            duration: 5000,
+          });
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadTemplate();
+  }, [templateId, currentUser, navigate, toast, onError]);
+
+  // Handler for template selection
+  const handleTemplateChange = (template: string) => {
+    setTemplateKey(template);
+    
+    // Check if template exists in either database templates or fallbacks
+    const templateData = dbTemplates[template];
+    
+    if (templateData) {
+      // If this is a new config or user confirms, update title and categories
+      if (!title || window.confirm("Do you want to replace the current title and categories with this preset?")) {
+        // Apply the template data to the form
+        applyTemplate(templateData);
+        
+        // Update URL fragment to save the selected template for later
+        window.location.hash = template;
+      }
+    }
+  };
+
+  // Save the current configuration as a template in the database
+  const handleSaveAsTemplate = async () => {
+    if (!currentUser) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to save templates.",
+        status: "error",
+        duration: 5000,
+      });
+      return;
+    }
+
+    if (!title.trim()) {
+      toast({
+        title: "Missing Title",
+        description: "Please enter a title for your template.",
+        status: "warning",
+        duration: 5000,
+      });
+      return;
+    }
+
+    // Process categories to filter out empty items
+    const processedCategories = categories.map(category => {
+      console.log(`Category "${category.name}": item count before filtering:`, category.items.length);
+      const filtered = {
+        name: (category.name || '').trim(),
+        items: Array.isArray(category.items) 
+          ? category.items.filter(item => {
+              console.log(`Checking item in category "${category.name}":`);
+              const isValid = debugItemContent(item);
+              if (!isValid) console.log(`  - Found empty item in category "${category.name}"`);
+              return isValid;
+            })
+          : []
+      };
+      console.log(`Category "${category.name}": item count after filtering:`, filtered.items.length);
+      return filtered;
+    });
+
+    console.log("Processed categories:", processedCategories);
+
+    if (processedCategories.length === 0) {
+      console.log("Error: No categories found after processing");
+      toast({
+        title: "Missing Categories",
+        description: "Please add at least one category with items.",
+        status: "warning",
+        duration: 5000,
+      });
+      return;
+    }
+
+    // Validate each category has at least 3 items
+    const categoriesWithTooFewItems = processedCategories.filter(cat => {
+      const hasTooFew = cat.items.length < 3;
+      if (hasTooFew) {
+        console.log(`Category "${cat.name}" has too few items: ${cat.items.length}`);
+      }
+      return hasTooFew;
+    });
+    
+    if (categoriesWithTooFewItems.length > 0) {
+      console.log("Categories with too few items:", categoriesWithTooFewItems);
+      toast({
+        title: "Not Enough Items",
+        description: "Each category must have at least 3 items.",
+        status: "warning",
+        duration: 3000,
+      });
+      return;
+    }
+
+    try {
+      // Prepare the template data
+      const templateData = {
+        type: 'sort-categories-egg',
+        title: title.trim(),
+        categories: processedCategories,
+        eggQty: eggQty,
+        userId: currentUser.uid,
+        createdAt: serverTimestamp()
+      };
+
+      // Save to the categoryTemplates collection
+      const docRef = await addDoc(collection(db, 'categoryTemplates'), templateData);
+      
+      // Add the new template to the state
+      setDbTemplates({
+        ...dbTemplates,
+        [docRef.id]: {
+          title: templateData.title,
+          categories: processedCategories,
+          eggQty: eggQty
+        }
+      });
+      
+      toast({
+        title: "Template Saved",
+        description: "Your template has been saved and will be available for future use.",
+        status: "success",
+        duration: 3000,
+      });
+      
+      // Set the template key to the new template
+      setTemplateKey(docRef.id);
+      
+    } catch (error) {
+      console.error("Error saving template:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save the template. Please try again.",
+        status: "error",
+        duration: 5000,
+      });
+    }
+  };
+
+  // Category management handlers
+  const handleAddCategory = () => {
+    // Check for maximum limit (10 categories)
+    if (categories.length >= 10) {
+      toast({
+        title: "Maximum Categories Reached",
+        description: "You cannot add more than 10 categories.",
+        status: "warning",
+        duration: 3000,
+      });
+      return;
+    }
+    
+    setCategories(prevCategories => {
+      const newIndex = prevCategories.length;
+      // Preemptively generate stable ID for the new category
+      getStableCategoryId(newIndex);
+      return [...prevCategories, { name: '', items: [''] }];
+    });
+  };
+
+  const handleRemoveCategory = (index: number) => {
+    // Safety check
+    if (index < 0 || index >= categories.length) {
+      return;
+    }
+    
+    // Check for minimum limit (2 categories)
+    if (categories.length <= 2) {
+      toast({
+        title: "Minimum Categories Required",
+        description: "You must have at least 2 categories.",
+        status: "warning",
+        duration: 3000,
+      });
+      return;
+    }
+    
+    setCategories(prevCategories => {
+      // Create a new array to avoid mutation
+      const updatedCategories = [...prevCategories];
+      
+      // Before removing the category, we need to adjust the IDs
+      // Get all existing category IDs
+      const existingIds = {...categoryIdsRef.current};
+      
+      // Remove the category
+      updatedCategories.splice(index, 1);
+      
+      // Adjust reference IDs for all categories after the removed one
+      for (let i = index; i < prevCategories.length - 1; i++) {
+        categoryIdsRef.current[i] = existingIds[i+1];
+      }
+      
+      // Remove the last ID since we've shifted all down
+      delete categoryIdsRef.current[prevCategories.length - 1];
+      
+      // Ensure there's at least one category
+      if (updatedCategories.length === 0) {
+        updatedCategories.push({ name: '', items: [''] });
+      }
+      
+      return updatedCategories;
+    });
+  };
+
+  const handleCategoryNameChange = (index: number, value: string) => {
+    console.log('Changing category name at index:', index, 'to:', value);
+    
+    setCategories(prevCategories => {
+      // Safety check
+      if (index < 0 || index >= prevCategories.length) {
+        console.warn('Invalid category index:', index);
+        return prevCategories;
+      }
+      
+      // Create a new array and copy all categories
+      const updatedCategories = [...prevCategories];
+      
+      // Create a new category object with the updated name but the same items
+      updatedCategories[index] = {
+        ...updatedCategories[index],
+        name: value
+      };
+      
+      // Log the state update for debugging
+      console.log('Category before update:', prevCategories[index]);
+      console.log('Category after update:', updatedCategories[index]);
+      
+      return updatedCategories;
+    });
+  };
+
+  // Item management handlers
+  const handleItemChange = (categoryIndex: number, itemIndex: number, value: string) => {
+    setCategories((prevCategories: Category[]) => {
+      // Validate indices
+      if (categoryIndex < 0 || categoryIndex >= prevCategories.length) {
+        console.warn('Invalid category index:', categoryIndex);
+        return prevCategories;
+      }
+
+      const category = prevCategories[categoryIndex];
+      if (!category || itemIndex < 0 || itemIndex >= category.items.length) {
+        console.warn('Invalid item index:', itemIndex);
+        return prevCategories;
+      }
+
+      // Create new arrays to avoid mutation
+      const newCategories = [...prevCategories];
+      const newItems = [...category.items];
+      
+      // Update the specific item content only
+      newItems[itemIndex] = value;
+      
+      // Update the category with new items
+      newCategories[categoryIndex] = {
+        name: category.name,
+        items: newItems
+      };
+      
+      return newCategories;
+    });
+  };
+
+  // Update handleAddItem to track the new item's ID
+  const handleAddItem = (categoryIndex: number) => {
+    console.log('Adding new item to category:', categoryIndex);
+    const category = categories[categoryIndex];
+    if (category.items.length >= MAX_ITEMS_PER_CATEGORY) {
+      toast({
+        title: 'Maximum items reached',
+        description: `You can only add up to ${MAX_ITEMS_PER_CATEGORY} items per category.`,
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setCategories(prevCategories => {
+      const newCategories = [...prevCategories];
+      const category = { ...newCategories[categoryIndex] };
+      category.items = [...category.items, ''];
+      newCategories[categoryIndex] = category;
+      
+      // Get a stable ID for the new item
+      getStableItemId(categoryIndex, category.items.length - 1);
+      
+      return newCategories;
+    });
+
+    // Use both approaches to ensure focus works
+    setTimeout(() => {
+      console.log('Attempting to focus new item');
+      
+      // First try the ref method
+      if (newItemRef.current) {
+        console.log('Using ref.focus() method');
+        newItemRef.current.focus();
+      } else {
+        // Fallback to DOM manipulation
+        console.log('Falling back to DOM manipulation');
+        const categoryContainer = document.querySelectorAll('.category-box')[categoryIndex];
+        if (categoryContainer) {
+          const editors = categoryContainer.querySelectorAll('.slate-editor');
+          const lastEditor = editors[editors.length - 1];
+          if (lastEditor) {
+            console.log('Found last editor, focusing');
+            // First click to activate the editor
+            (lastEditor as HTMLElement).click();
+            (lastEditor as HTMLElement).focus();
+            
+            // Then simulate keyboard behavior to set cursor at beginning
+            try {
+              setTimeout(() => {
+                // Try to select all text first (works in most editors)
+                document.execCommand('selectAll');
+                // Then move to the start
+                document.execCommand('delete');
+                
+                console.log('Set cursor to beginning of editor');
+              }, 10);
+            } catch (err) {
+              console.error('Error setting cursor position:', err);
+            }
+          } else {
+            console.log('Last editor not found');
+          }
+        } else {
+          console.log('Category container not found');
+        }
+      }
+    }, 150);
+  };
+
+  // Update handleDeleteItem to maintain stable references after deletion
+  const handleDeleteItem = (categoryIndex: number, itemIndex: number) => {
+    setCategories(prevCategories => {
+      // Validate indices
+      if (categoryIndex < 0 || categoryIndex >= prevCategories.length) {
+        return prevCategories;
+      }
+
+      const category = prevCategories[categoryIndex];
+      if (!category || itemIndex < 0 || itemIndex >= category.items.length) {
+        return prevCategories;
+      }
+
+      // Create new arrays to avoid mutation
+      const newCategories = [...prevCategories];
+      const newItems = [...category.items];
+      
+      // Remove the item
+      newItems.splice(itemIndex, 1);
+      
+      // Update IDs for all items after the removed one
+      for (let i = itemIndex; i < newItems.length; i++) {
+        // Get the old key
+        const oldKey = `${categoryIndex}-${i + 1}`;
+        // Get the new key
+        const newKey = `${categoryIndex}-${i}`;
+        
+        // Move the ID from the old key to the new key
+        if (itemIdsRef.current[oldKey]) {
+          itemIdsRef.current[newKey] = itemIdsRef.current[oldKey];
+          delete itemIdsRef.current[oldKey];
+        }
+      }
+      
+      // Create new category object with updated items
+      const updatedCategory = {
+        ...category,
+        items: newItems
+      };
+      
+      // Update the specific category in the array
+      newCategories[categoryIndex] = updatedCategory;
+      
+      return newCategories;
+    });
+  };
+
+  const handleMoveItemUp = (categoryIndex: number, itemIndex: number) => {
+    if (itemIndex <= 0) return; // Already at the top
+    
+    setCategories(prevCategories => {
+      const newCategories = [...prevCategories];
+      const category = { ...newCategories[categoryIndex] };
+      const items = [...category.items];
+      
+      // Swap items
+      [items[itemIndex], items[itemIndex - 1]] = [items[itemIndex - 1], items[itemIndex]];
+      
+      // Create a new category object to ensure React detects the change
+      const updatedCategory = {
+        ...category,
+        items: items
+      };
+      
+      // Create a new categories array with the updated category
+      newCategories[categoryIndex] = updatedCategory;
+      
+      return newCategories;
+    });
+  };
+
+  const handleMoveItemDown = (categoryIndex: number, itemIndex: number) => {
+    setCategories(prevCategories => {
+      if (itemIndex >= prevCategories[categoryIndex].items.length - 1) return prevCategories; // Already at the bottom
+      
+      const newCategories = [...prevCategories];
+      const category = { ...newCategories[categoryIndex] };
+      const items = [...category.items];
+      
+      // Swap items
+      [items[itemIndex], items[itemIndex + 1]] = [items[itemIndex + 1], items[itemIndex]];
+      
+      // Create a new category object to ensure React detects the change
+      const updatedCategory = {
+        ...category,
+        items: items
+      };
+      
+      // Create a new categories array with the updated category
+      newCategories[categoryIndex] = updatedCategory;
+      
+      return newCategories;
+    });
+  };
+
+  // Calculate total items to ensure we have enough for the egg quantity
+  const totalItems = categories.reduce((sum: number, category: Category) => {
+    // Check if items exists and is an array before filtering
+    if (!category.items || !Array.isArray(category.items)) {
+      return sum;
+    }
+    // Only count non-empty items
+    const validItems = category.items.filter((item: string) => item && item.trim().length > 0);
+    return sum + validItems.length;
+  }, 0);
+
+  // Helper function to get a stable ID for an item
+  const getStableItemId = (categoryIndex: number, itemIndex: number) => {
+    const key = `${categoryIndex}-${itemIndex}`;
+    
+    // If we already have an ID for this item, return it
+    if (itemIdsRef.current[key]) {
+      return itemIdsRef.current[key];
+    }
+    
+    // Otherwise, generate a new ID and store it
+    const newId = `item-${nextIdRef.current}`;
+    nextIdRef.current++;
+    itemIdsRef.current[key] = newId;
+    return newId;
+  };
+  
+  // Helper function to get a stable ID for a category
+  const getStableCategoryId = (categoryIndex: number) => {
+    // If we already have an ID for this category, return it
+    if (categoryIdsRef.current[categoryIndex]) {
+      return categoryIdsRef.current[categoryIndex];
+    }
+    
+    // Otherwise, generate a new ID and store it
+    const newId = `category-${nextCategoryIdRef.current}`;
+    nextCategoryIdRef.current++;
+    categoryIdsRef.current[categoryIndex] = newId;
+    return newId;
+  };
+
+  return (
+    <div>
+      {/* Rest of the component JSX code */}
+    </div>
+  );
+};
+
+export default SortCategoriesEggConfig;
