@@ -654,81 +654,144 @@ const SortCategoriesEggConfig = () => {
       
       setIsLoading(true);
       try {
-        const docRef = doc(db, 'userGameConfigs', templateId);
-        const docSnap = await getDoc(docRef);
+        // First try to load from userGameConfigs
+        const gameConfigRef = doc(db, 'userGameConfigs', templateId);
+        const gameConfigSnap = await getDoc(gameConfigRef);
         
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        // If not found in userGameConfigs, try categoryTemplates
+        if (!gameConfigSnap.exists()) {
+          console.log(`Template ${templateId} not found in userGameConfigs, trying categoryTemplates`);
+          const templateRef = doc(db, 'categoryTemplates', templateId);
+          const templateSnap = await getDoc(templateRef);
           
-          // Check if the user has permission to edit this config
-          if (data.userId !== currentUser?.uid) {
-            // If not the owner, create a copy instead of editing
-            setIsEditing(false);
-            toast({
-              title: "Creating a copy",
-              description: "You're not the owner of this configuration, so you'll create a copy instead.",
-              status: "info",
-              duration: 5000,
-            });
-          } else {
-            setIsEditing(true);
-          }
-
-          // Populate form fields
-          setTitle(data.title || '');
-          setEggQty(data.eggQty || 6);
-          setShareConfig(data.share || false);
-          
-          // Handle categories
-          if (data.categories && Array.isArray(data.categories)) {
-            const loadedCategories = data.categories.map((cat: any) => {
-              // Ensure category name is a string
-              const name = typeof cat.name === 'string' ? cat.name : 
-                           (cat.name && typeof cat.name === 'object' && cat.name.toString) ? cat.name.toString() : '';
-              
-              // Ensure items are an array of strings
-              let items: string[] = [];
-              if (Array.isArray(cat.items)) {
-                items = cat.items.map((item: any) => {
-                  if (typeof item === 'string') return item;
-                  if (item && typeof item === 'object') {
-                    // Try to extract a string from the object
-                    if (typeof item.toString === 'function') return item.toString();
-                    if (item.name && typeof item.name === 'string') return item.name;
-                    if (item.text && typeof item.text === 'string') return item.text;
-                  }
-                  return '';
-                }).filter(Boolean);
-              } else if (typeof cat.items === 'string') {
-                items = [cat.items];
-              } else if (cat.items) {
-                console.warn('Unexpected items format:', cat.items);
-                items = [''];
-              }
-              
-              // Ensure we have at least one empty item
-              if (items.length === 0) {
-                items = [''];
-              }
-              
-              return { name, items };
-            });
+          if (templateSnap.exists()) {
+            const data = templateSnap.data();
+            console.log(`Found template in categoryTemplates:`, data);
             
-            setCategories(loadedCategories);
-          }
-        } else {
-          // Use the parent's error handler if available, otherwise fall back to toast
-          if (onError) {
-            onError("The requested configuration could not be found.");
+            // Populate form fields
+            setTitle(data.title || '');
+            setEggQty(data.eggQty || 6);
+            setShareConfig(data.share || false);
+            setIsEditing(false); // Creating a new config based on template
+            
+            // Handle categories
+            if (data.categories && Array.isArray(data.categories)) {
+              const loadedCategories = data.categories.map((cat: any) => {
+                // Ensure category name is a string
+                const name = typeof cat.name === 'string' ? cat.name : 
+                            (cat.name && typeof cat.name === 'object' && cat.name.toString) ? cat.name.toString() : '';
+                
+                // Ensure items are an array of strings
+                let items: string[] = [];
+                if (Array.isArray(cat.items)) {
+                  items = cat.items.map((item: any) => {
+                    if (typeof item === 'string') return item;
+                    if (item && typeof item === 'object') {
+                      // Try to extract a string from the object
+                      if (typeof item.toString === 'function') return item.toString();
+                      if (item.name && typeof item.name === 'string') return item.name;
+                      if (item.text && typeof item.text === 'string') return item.text;
+                    }
+                    return '';
+                  }).filter(Boolean);
+                } else if (typeof cat.items === 'string') {
+                  items = [cat.items];
+                } else if (cat.items) {
+                  console.warn('Unexpected items format:', cat.items);
+                  items = [''];
+                }
+                
+                // Ensure we have at least one empty item
+                if (items.length === 0) {
+                  items = [''];
+                }
+                
+                return { name, items };
+              });
+              
+              setCategories(loadedCategories);
+            }
+            
+            setIsLoading(false);
+            return;
           } else {
-            toast({
-              title: "Configuration not found",
-              description: "The requested configuration could not be found.",
-              status: "error",
-              duration: 5000,
-            });
+            console.log(`Template ${templateId} not found in either collection`);
+            // Template not found in either collection
+            if (onError) {
+              onError("The requested configuration could not be found.");
+            } else {
+              toast({
+                title: "Configuration not found",
+                description: "The requested configuration could not be found.",
+                status: "error",
+                duration: 5000,
+              });
+            }
+            navigate('/configure/sort-categories-egg');
+            setIsLoading(false);
+            return;
           }
-          navigate('/configure/sort-categories-egg');
+        }
+        
+        // If we get here, we found the template in userGameConfigs
+        const data = gameConfigSnap.data();
+        console.log(`Found template in userGameConfigs:`, data);
+        
+        // Check if the user has permission to edit this config
+        if (data.userId !== currentUser?.uid) {
+          // If not the owner, create a copy instead of editing
+          setIsEditing(false);
+          toast({
+            title: "Creating a copy",
+            description: "You're not the owner of this configuration, so you'll create a copy instead.",
+            status: "info",
+            duration: 5000,
+          });
+        } else {
+          setIsEditing(true);
+        }
+
+        // Populate form fields
+        setTitle(data.title || '');
+        setEggQty(data.eggQty || 6);
+        setShareConfig(data.share || false);
+        
+        // Handle categories
+        if (data.categories && Array.isArray(data.categories)) {
+          const loadedCategories = data.categories.map((cat: any) => {
+            // Ensure category name is a string
+            const name = typeof cat.name === 'string' ? cat.name : 
+                        (cat.name && typeof cat.name === 'object' && cat.name.toString) ? cat.name.toString() : '';
+            
+            // Ensure items are an array of strings
+            let items: string[] = [];
+            if (Array.isArray(cat.items)) {
+              items = cat.items.map((item: any) => {
+                if (typeof item === 'string') return item;
+                if (item && typeof item === 'object') {
+                  // Try to extract a string from the object
+                  if (typeof item.toString === 'function') return item.toString();
+                  if (item.name && typeof item.name === 'string') return item.name;
+                  if (item.text && typeof item.text === 'string') return item.text;
+                }
+                return '';
+              }).filter(Boolean);
+            } else if (typeof cat.items === 'string') {
+              items = [cat.items];
+            } else if (cat.items) {
+              console.warn('Unexpected items format:', cat.items);
+              items = [''];
+            }
+            
+            // Ensure we have at least one empty item
+            if (items.length === 0) {
+              items = [''];
+            }
+            
+            return { name, items };
+          });
+          
+          setCategories(loadedCategories);
         }
       } catch (error) {
         console.error("Error loading configuration:", error);
