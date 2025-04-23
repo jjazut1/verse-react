@@ -342,12 +342,34 @@ interface SlateEditorRef extends HTMLDivElement {
 }
 
 // Helper function to debug item content
-const debugItemContent = (itemContent: string) => {
+const debugItemContent = (itemContent: any) => {
+  // Handle non-string values
+  if (typeof itemContent !== 'string') {
+    console.log('Found non-string item:', itemContent);
+    
+    // Try to extract string content if possible
+    if (itemContent && typeof itemContent === 'object') {
+      if (itemContent.name && typeof itemContent.name === 'string') {
+        itemContent = itemContent.name;
+        console.log('Using name property instead:', itemContent);
+      } else if (itemContent.text && typeof itemContent.text === 'string') {
+        itemContent = itemContent.text;
+        console.log('Using text property instead:', itemContent);
+      } else {
+        // Return false for invalid content
+        return false;
+      }
+    } else {
+      // Return false for null, undefined, or other non-string, non-object values
+      return false;
+    }
+  }
+
   console.log('Item content inspection:');
   console.log('- String length:', itemContent.length);
   console.log('- Is empty string:', itemContent === '');
   console.log('- After trim length:', itemContent.trim().length);
-  console.log('- Character codes:', Array.from(itemContent).map(c => c.charCodeAt(0)));
+  console.log('- Character codes:', Array.from(itemContent as string).map((c: string) => c.charCodeAt(0)));
   console.log('- Content as JSON:', JSON.stringify(itemContent));
   return itemContent && itemContent.trim().length > 0;
 };
@@ -580,14 +602,39 @@ const SortCategoriesEggConfig = () => {
     setTitle(templateData.title || 'Untitled Template');
     setEggQty(templateData.eggQty || 6);
     
+    // Helper function to ensure string values
+    const ensureString = (value: any): string => {
+      if (typeof value === 'string') return value;
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'object') {
+        if (value.name && typeof value.name === 'string') return value.name;
+        if (value.text && typeof value.text === 'string') return value.text;
+        if (typeof value.toString === 'function' && value.toString !== Object.prototype.toString) {
+          return value.toString();
+        }
+      }
+      return '';
+    };
+    
     // Ensure categories is properly formatted
-    const sanitizedCategories = (templateData.categories || []).map(cat => ({
-      name: cat?.name || '',
-      items: Array.isArray(cat?.items) ? 
-        // Filter out null/undefined items and ensure strings
-        cat.items.filter(Boolean).map(item => item) : 
-        [''] // Default to empty array with one empty string
-    }));
+    const sanitizedCategories = (templateData.categories || []).map(cat => {
+      const catName = ensureString(cat?.name);
+      
+      let items: string[] = [];
+      if (Array.isArray(cat?.items)) {
+        items = cat.items.map(ensureString).filter(Boolean);
+      }
+      
+      // Ensure at least one item (even if empty)
+      if (items.length === 0) {
+        items = [''];
+      }
+      
+      return {
+        name: catName,
+        items
+      };
+    });
     
     // If there are no categories, add a default empty one
     if (sanitizedCategories.length === 0) {
@@ -595,6 +642,8 @@ const SortCategoriesEggConfig = () => {
     }
     
     setCategories(sanitizedCategories);
+    
+    console.log('Applied template with sanitized categories:', sanitizedCategories);
   };
 
   // Load existing configuration if templateId is provided
@@ -632,10 +681,39 @@ const SortCategoriesEggConfig = () => {
           
           // Handle categories
           if (data.categories && Array.isArray(data.categories)) {
-            const loadedCategories = data.categories.map((cat: string) => ({
-              name: cat || '',
-              items: [cat]
-            }));
+            const loadedCategories = data.categories.map((cat: any) => {
+              // Ensure category name is a string
+              const name = typeof cat.name === 'string' ? cat.name : 
+                           (cat.name && typeof cat.name === 'object' && cat.name.toString) ? cat.name.toString() : '';
+              
+              // Ensure items are an array of strings
+              let items: string[] = [];
+              if (Array.isArray(cat.items)) {
+                items = cat.items.map((item: any) => {
+                  if (typeof item === 'string') return item;
+                  if (item && typeof item === 'object') {
+                    // Try to extract a string from the object
+                    if (typeof item.toString === 'function') return item.toString();
+                    if (item.name && typeof item.name === 'string') return item.name;
+                    if (item.text && typeof item.text === 'string') return item.text;
+                  }
+                  return '';
+                }).filter(Boolean);
+              } else if (typeof cat.items === 'string') {
+                items = [cat.items];
+              } else if (cat.items) {
+                console.warn('Unexpected items format:', cat.items);
+                items = [''];
+              }
+              
+              // Ensure we have at least one empty item
+              if (items.length === 0) {
+                items = [''];
+              }
+              
+              return { name, items };
+            });
+            
             setCategories(loadedCategories);
           }
         } else {
@@ -1895,7 +1973,10 @@ const SortCategoriesEggConfig = () => {
                       </Text>
                       <Box mr={2} flex="1">
                         <div 
-                          onFocus={(e) => handleEditorFocus(e.currentTarget)}
+                          onFocus={(e) => {
+                            handleEditorFocus(e.currentTarget);
+                            setLastSelectionPath([categoryIndex, itemIndex]);
+                          }}
                           onBlur={handleEditorBlur}
                         >
                           <SlateEditor
@@ -1913,10 +1994,6 @@ const SortCategoriesEggConfig = () => {
                             onChange={(value) => handleItemChange(categoryIndex, itemIndex, value)}
                             placeholder="Enter an item"
                             compact
-                            onFocus={() => {
-                              setLastSelectionPath([categoryIndex, itemIndex]);
-                              // The SlateEditor will set its ID as active
-                            }}
                           />
                         </div>
                       </Box>

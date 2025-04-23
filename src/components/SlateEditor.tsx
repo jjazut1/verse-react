@@ -866,7 +866,27 @@ const deserialize = (html: any): Descendant[] => {
   if (DEBUG) console.log('Deserializing HTML:', html);
   
   // Handle empty, non-string, or undefined input
-  if (!html || typeof html !== 'string') {
+  if (!html) {
+    console.log('Received empty value for HTML deserialization:', html);
+    return [{ type: 'paragraph', children: [{ text: '' }] } as CustomElement];
+  }
+
+  // If we received an object with a name property (category object), extract the name
+  if (typeof html === 'object' && html !== null) {
+    if (html.name && typeof html.name === 'string') {
+      if (DEBUG) console.log('Extracting name from object:', html.name);
+      html = html.name;
+    } else if (html.text && typeof html.text === 'string') {
+      if (DEBUG) console.log('Extracting text from object:', html.text);
+      html = html.text;
+    } else {
+      console.log('Received object value for HTML deserialization, using empty string:', html);
+      return [{ type: 'paragraph', children: [{ text: '' }] } as CustomElement];
+    }
+  }
+  
+  // Ensure we're working with a string at this point
+  if (typeof html !== 'string') {
     console.log('Received non-string value for HTML deserialization:', html);
     return [{ type: 'paragraph', children: [{ text: '' }] } as CustomElement];
   }
