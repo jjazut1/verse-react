@@ -862,11 +862,16 @@ const MarkButton = ({
 };
 
 // Convert HTML to Slate nodes - Add debugging
-const deserialize = (html: string): Descendant[] => {
+const deserialize = (html: any): Descendant[] => {
   if (DEBUG) console.log('Deserializing HTML:', html);
   
-  // Handle empty or undefined input
-  if (!html || html.trim() === '') {
+  // Handle empty, non-string, or undefined input
+  if (!html || typeof html !== 'string') {
+    console.log('Received non-string value for HTML deserialization:', html);
+    return [{ type: 'paragraph', children: [{ text: '' }] } as CustomElement];
+  }
+  
+  if (html.trim() === '') {
     return [{ type: 'paragraph', children: [{ text: '' }] } as CustomElement];
   }
   
