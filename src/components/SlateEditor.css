@@ -90,6 +90,11 @@
   opacity: 1; /* Fully visible when focused */
 }
 
+/* Prevent toolbar visibility on non-focused editors in same category */
+.category-box .slate-editor-container:not([data-focused="true"]) .inline-toolbar.always-visible {
+  opacity: 0.001 !important; /* Force invisibility for non-focused editors */
+}
+
 /* Always show toolbar when it has visible class, even if editor loses focus */
 .inline-toolbar.visible {
   background-color: #e8f0ff;
