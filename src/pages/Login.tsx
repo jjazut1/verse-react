@@ -10,7 +10,9 @@ declare global {
       reset: (widgetId?: number) => void;
       execute: (widgetId?: number) => void;
       getResponse: (widgetId?: number) => string;
+      ready: (callback: () => void) => void;
     };
+    onRecaptchaLoaded: () => void;
   }
 }
 
@@ -79,6 +81,30 @@ const linkStyle = {
   fontWeight: 'bold',
 };
 
+// Function to dynamically load reCAPTCHA script
+const loadRecaptchaScript = () => {
+  return new Promise<void>((resolve) => {
+    // If script is already loaded, resolve immediately
+    if (window.grecaptcha) {
+      console.log('reCAPTCHA already loaded');
+      resolve();
+      return;
+    }
+    
+    console.log('Loading reCAPTCHA script dynamically');
+    window.onRecaptchaLoaded = () => {
+      console.log('reCAPTCHA script loaded successfully');
+      resolve();
+    };
+    
+    const script = document.createElement('script');
+    script.src = `https://www.google.com/recaptcha/api.js?onload=onRecaptchaLoaded&render=explicit`;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+  });
+};
+
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -86,53 +112,102 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [recaptchaVerified, setRecaptchaVerified] = useState(false);
+  const [recaptchaLoaded, setRecaptchaLoaded] = useState(false);
   const recaptchaRef = useRef<number | null>(null);
   const recaptchaContainerRef = useRef<HTMLDivElement>(null);
   const { login, signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
 
+  // Load reCAPTCHA script when component mounts
+  useEffect(() => {
+    loadRecaptchaScript().then(() => {
+      setRecaptchaLoaded(true);
+    });
+  }, []);
+  
   // Initialize reCAPTCHA when in signup mode
   useEffect(() => {
-    if (mode === 'signup' && recaptchaContainerRef.current && window.grecaptcha && !recaptchaRef.current) {
-      try {
-        recaptchaRef.current = window.grecaptcha.render(recaptchaContainerRef.current, {
-          'sitekey': RECAPTCHA_SITE_KEY,
-          'callback': () => {
-            setRecaptchaVerified(true);
-          },
-          'expired-callback': () => {
-            setRecaptchaVerified(false);
-          }
-        });
-      } catch (error) {
-        console.error('Error rendering reCAPTCHA:', error);
+    if (mode === 'signup' && recaptchaLoaded) {
+      console.log('In signup mode, setting up reCAPTCHA...');
+      
+      if (!window.grecaptcha) {
+        console.error('reCAPTCHA not loaded yet');
+        setError('reCAPTCHA verification could not be loaded. Please refresh the page and try again.');
+        return;
       }
+      
+      // Ensure container is rendered before initializing reCAPTCHA
+      setTimeout(() => {
+        try {
+          if (recaptchaContainerRef.current && !recaptchaRef.current) {
+            console.log('Rendering reCAPTCHA...');
+            recaptchaRef.current = window.grecaptcha.render(recaptchaContainerRef.current, {
+              'sitekey': RECAPTCHA_SITE_KEY,
+              'callback': () => {
+                console.log('reCAPTCHA callback success');
+                setRecaptchaVerified(true);
+              },
+              'expired-callback': () => {
+                console.log('reCAPTCHA expired');
+                setRecaptchaVerified(false);
+              },
+              'error-callback': () => {
+                console.log('reCAPTCHA error');
+                setError('Error loading reCAPTCHA verification');
+              }
+            });
+          } else if (!recaptchaContainerRef.current) {
+            console.error('reCAPTCHA container ref not available');
+          } else if (recaptchaRef.current) {
+            console.log('reCAPTCHA already rendered, resetting');
+            window.grecaptcha.reset(recaptchaRef.current);
+          }
+        } catch (error) {
+          console.error('Error rendering reCAPTCHA:', error);
+        }
+      }, 100);
     } else if (mode === 'login' && recaptchaRef.current && window.grecaptcha) {
       // Reset reCAPTCHA when switching to login mode
+      console.log('Switching to login mode, resetting reCAPTCHA');
       window.grecaptcha.reset(recaptchaRef.current);
       setRecaptchaVerified(false);
       recaptchaRef.current = null;
     }
-  }, [mode]);
+  }, [mode, recaptchaLoaded]);
 
   const validateForm = () => {
     setError('');
+    
+    // Common validation for both login and signup
     if (!email.trim()) {
       setError('Email is required');
       return false;
     }
+    
     if (!password.trim()) {
       setError('Password is required');
       return false;
     }
-    if (mode === 'signup' && password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return false;
+    
+    // Additional validation for signup
+    if (mode === 'signup') {
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters');
+        return false;
+      }
+      
+      if (!recaptchaVerified) {
+        setError('Please complete the reCAPTCHA verification');
+        return false;
+      }
+      
+      // If the reCAPTCHA isn't loaded yet, don't allow submission
+      if (!recaptchaLoaded) {
+        setError('reCAPTCHA verification is still loading');
+        return false;
+      }
     }
-    if (mode === 'signup' && !recaptchaVerified) {
-      setError('Please complete the reCAPTCHA verification');
-      return false;
-    }
+    
     return true;
   };
 
@@ -210,6 +285,7 @@ const Login = () => {
   };
 
   const toggleMode = () => {
+    console.log(`Toggling mode from ${mode} to ${mode === 'login' ? 'signup' : 'login'}`);
     setMode(mode === 'login' ? 'signup' : 'login');
     setError('');
     setRecaptchaVerified(false);
@@ -219,6 +295,38 @@ const Login = () => {
       window.grecaptcha.reset(recaptchaRef.current);
       recaptchaRef.current = null;
     }
+  };
+
+  // For the signup mode section in the render function
+  const renderRecaptcha = () => {
+    if (mode === 'signup') {
+      return (
+        <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+          <div ref={recaptchaContainerRef} id="recaptcha-container"></div>
+          {!recaptchaLoaded && (
+            <div style={{ color: 'var(--color-gray-500)', fontSize: '0.875rem', textAlign: 'center' }}>
+              Loading verification...
+            </div>
+          )}
+          {recaptchaVerified && (
+            <div style={{ 
+              color: 'var(--color-success)', 
+              fontSize: '0.875rem', 
+              marginTop: '0.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
+              </svg>
+              <span>Verification complete</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -259,34 +367,29 @@ const Login = () => {
             />
           </div>
           
-          {mode === 'signup' && (
-            <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
-              <div ref={recaptchaContainerRef}></div>
-              {recaptchaVerified && (
-                <div style={{ 
-                  color: 'var(--color-success)', 
-                  fontSize: '0.875rem', 
-                  marginTop: '0.25rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="currentColor"/>
-                  </svg>
-                  <span>Verification complete</span>
-                </div>
-              )}
-            </div>
-          )}
+          {renderRecaptcha()}
           
           <button
             type="submit"
-            style={buttonStyle}
+            style={{
+              ...buttonStyle,
+              opacity: (mode === 'signup' && !recaptchaVerified) ? 0.5 : 1
+            }}
             disabled={isLoading || (mode === 'signup' && !recaptchaVerified)}
           >
             {isLoading ? 'Processing...' : mode === 'login' ? 'Log In' : 'Sign Up'}
           </button>
+          
+          {mode === 'signup' && !recaptchaVerified && (
+            <div style={{ 
+              color: 'var(--color-error)',
+              fontSize: '0.75rem',
+              textAlign: 'center',
+              marginTop: '0.5rem'
+            }}>
+              Please complete the reCAPTCHA verification to sign up
+            </div>
+          )}
         </form>
         
         <div style={{ margin: '1rem 0', textAlign: 'center', position: 'relative' }}>
