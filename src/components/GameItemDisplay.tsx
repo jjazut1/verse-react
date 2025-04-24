@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import AssignGameForm from './AssignGameForm';
 
 interface GameItemDisplayProps {
   title: string;
@@ -45,6 +47,9 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
   isOwner, 
   onDelete 
 }) => {
+  const { isTeacher } = useAuth();
+  const [showAssignForm, setShowAssignForm] = useState(false);
+  
   // The icon to show when no thumbnail is available
   const gameIcon = getIconByType(type) || title.charAt(0);
   // Background color for the thumbnail placeholder
@@ -176,6 +181,43 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
     )
   );
 
+  const renderAssignButton = () => {
+    if (!isTeacher || !id) return null;
+    
+    return (
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowAssignForm(true);
+        }}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          right: isOwner ? '48px' : '16px',
+          transform: 'translateY(-50%)',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--color-primary-600)',
+          padding: 'var(--spacing-1)',
+          borderRadius: 'var(--border-radius-sm)',
+          transition: 'all 0.2s',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10
+        }}
+        aria-label="Assign"
+        title="Assign to Student"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3ZM19 19H5V5H19V19ZM7 10H9V17H7V10ZM11 7H13V17H11V7ZM15 13H17V17H15V13Z" fill="currentColor"/>
+        </svg>
+      </button>
+    );
+  };
+
   if (onClick) {
     return (
       <div style={{ position: 'relative' }}>
@@ -193,6 +235,30 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
           {renderInfo()}
         </div>
         {renderDeleteButton()}
+        {renderAssignButton()}
+        
+        {/* Assignment Form Modal */}
+        {showAssignForm && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 'var(--spacing-4)'
+          }}>
+            <AssignGameForm
+              game={{ id: id || '', title, type, thumbnail }}
+              onSuccess={() => setShowAssignForm(false)}
+              onCancel={() => setShowAssignForm(false)}
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -213,6 +279,30 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
         {renderInfo()}
       </RouterLink>
       {renderDeleteButton()}
+      {renderAssignButton()}
+      
+      {/* Assignment Form Modal */}
+      {showAssignForm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: 'var(--spacing-4)'
+        }}>
+          <AssignGameForm
+            game={{ id: id || '', title, type, thumbnail }}
+            onSuccess={() => setShowAssignForm(false)}
+            onCancel={() => setShowAssignForm(false)}
+          />
+        </div>
+      )}
     </div>
   ) : (
     <div style={{ position: 'relative' }}>
@@ -221,6 +311,30 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
         {renderInfo()}
       </div>
       {renderDeleteButton()}
+      {renderAssignButton()}
+      
+      {/* Assignment Form Modal */}
+      {showAssignForm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: 'var(--spacing-4)'
+        }}>
+          <AssignGameForm
+            game={{ id: id || '', title, type, thumbnail }}
+            onSuccess={() => setShowAssignForm(false)}
+            onCancel={() => setShowAssignForm(false)}
+          />
+        </div>
+      )}
     </div>
   );
 };

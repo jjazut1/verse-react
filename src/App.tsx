@@ -9,6 +9,8 @@ import TeacherDashboard from './pages/TeacherDashboard'
 import ConfigurationRouter from './pages/configurations/ConfigurationRouter'
 import WhackAMoleConfig from './pages/configurations/WhackAMoleConfig'
 import SortCategoriesEggConfig from './pages/configurations/SortCategoriesEggConfig'
+import Assignments from './pages/Assignments'
+import AssignmentDetails from './pages/AssignmentDetails'
 
 // Create a layout component that includes the Navbar
 const Layout = ({ children }: { children: React.ReactNode }) => {
@@ -40,6 +42,14 @@ const router = createBrowserRouter([
   {
     path: "/teacher",
     element: <Layout><TeacherDashboard /></Layout>,
+  },
+  {
+    path: "/assignments",
+    element: <Layout><Assignments /></Layout>,
+  },
+  {
+    path: "/assignment/:token",
+    element: <AssignmentDetails />,
   },
   {
     path: "/configure",

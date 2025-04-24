@@ -49,14 +49,24 @@ const Navbar = () => {
             Games
           </RouterLink>
           {isTeacher && (
-            <RouterLink 
-              to="/teacher" 
-              style={navLinkStyle}
-              onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
-              onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-            >
-              Teacher Dashboard
-            </RouterLink>
+            <>
+              <RouterLink 
+                to="/teacher" 
+                style={navLinkStyle}
+                onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+                onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+              >
+                Teacher Dashboard
+              </RouterLink>
+              <RouterLink 
+                to="/assignments" 
+                style={navLinkStyle}
+                onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+                onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+              >
+                Assignments
+              </RouterLink>
+            </>
           )}
         </div>
         

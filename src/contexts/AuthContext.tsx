@@ -13,8 +13,14 @@ import {
   UserCredential
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+
+// For demo purposes, we'll check if user email is in this list to determine if they're a teacher
+const TEACHER_EMAILS = [
+  'teacher@example.com',
+  'admin@example.com'
+];
 
 interface AuthContextType {
   currentUser: User | null;
@@ -49,11 +55,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isTeacher, setIsTeacher] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Check if a user is a teacher
+  const checkIfTeacher = async (user: User | null) => {
+    if (!user) {
+      setIsTeacher(false);
+      return;
+    }
+    
+    try {
+      // First check if email is in our demo list
+      if (TEACHER_EMAILS.includes(user.email || '')) {
+        setIsTeacher(true);
+        return;
+      }
+      
+      // Then check if the user is in the teachers collection
+      const userDoc = await getDoc(doc(db, 'teachers', user.uid));
+      if (userDoc.exists()) {
+        setIsTeacher(true);
+        return;
+      }
+      
+      // Finally, check if they have a teacher role in their user document
+      const userRecord = await getDoc(doc(db, 'users', user.uid));
+      if (userRecord.exists() && userRecord.data().role === 'teacher') {
+        setIsTeacher(true);
+        return;
+      }
+      
+      setIsTeacher(false);
+    } catch (error) {
+      console.error('Error checking teacher status:', error);
+      setIsTeacher(false);
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
-      // TODO: Check if user is a teacher in Firestore
-      setIsTeacher(false);
+      checkIfTeacher(user);
       setLoading(false);
     });
 
