@@ -36,6 +36,7 @@ import { FaUndo, FaRedo } from 'react-icons/fa';
 import SlateEditor from '../../components/SlateEditor';
 import { MAX_ITEMS_PER_CATEGORY, MIN_ITEMS_PER_CATEGORY, MAX_CATEGORIES, MIN_CATEGORIES } from '../../constants/game';
 import isEqual from 'lodash/isEqual';
+import { useUnsavedChangesContext } from '../../contexts/UnsavedChangesContext';
 
 interface CategoryTemplate {
   title: string;
@@ -380,6 +381,7 @@ const SortCategoriesEggConfig = () => {
   const toast = useToast();
   const { currentUser } = useAuth();
   const { onError } = useOutletContext<OutletContextType>();
+  const { setHasUnsavedChanges } = useUnsavedChangesContext();
 
   // Form state
   const [title, setTitle] = useState('');
@@ -430,8 +432,11 @@ const SortCategoriesEggConfig = () => {
         present: JSON.parse(JSON.stringify(categories)), // Deep copy
         future: []
       }));
+      
+      // Set unsaved changes flag
+      setHasUnsavedChanges(true);
     }
-  }, [categories]);
+  }, [categories, setHasUnsavedChanges]);
 
   // Keep a ref to all rendered editors for direct access to undo/redo methods
   const editorRefsMap = useRef<Map<string, React.RefObject<SlateEditorRef>>>(new Map());
@@ -736,28 +741,28 @@ const SortCategoriesEggConfig = () => {
         // If we get here, we found the template in userGameConfigs
         const data = gameConfigSnap.data();
         console.log(`Found template in userGameConfigs:`, data);
-        
-        // Check if the user has permission to edit this config
-        if (data.userId !== currentUser?.uid) {
-          // If not the owner, create a copy instead of editing
-          setIsEditing(false);
-          toast({
-            title: "Creating a copy",
-            description: "You're not the owner of this configuration, so you'll create a copy instead.",
-            status: "info",
-            duration: 5000,
-          });
-        } else {
-          setIsEditing(true);
-        }
+          
+          // Check if the user has permission to edit this config
+          if (data.userId !== currentUser?.uid) {
+            // If not the owner, create a copy instead of editing
+            setIsEditing(false);
+            toast({
+              title: "Creating a copy",
+              description: "You're not the owner of this configuration, so you'll create a copy instead.",
+              status: "info",
+              duration: 5000,
+            });
+          } else {
+            setIsEditing(true);
+          }
 
-        // Populate form fields
-        setTitle(data.title || '');
-        setEggQty(data.eggQty || 6);
-        setShareConfig(data.share || false);
-        
-        // Handle categories
-        if (data.categories && Array.isArray(data.categories)) {
+          // Populate form fields
+          setTitle(data.title || '');
+          setEggQty(data.eggQty || 6);
+          setShareConfig(data.share || false);
+          
+          // Handle categories
+          if (data.categories && Array.isArray(data.categories)) {
           const loadedCategories = data.categories.map((cat: any) => {
             // Ensure category name is a string
             const name = typeof cat.name === 'string' ? cat.name : 
@@ -859,8 +864,8 @@ const SortCategoriesEggConfig = () => {
     const processedCategories = categories.map(category => {
       console.log(`Category "${category.name}": item count before filtering:`, category.items.length);
       const filtered = {
-        name: (category.name || '').trim(),
-        items: Array.isArray(category.items) 
+      name: (category.name || '').trim(),
+      items: Array.isArray(category.items) 
           ? category.items.filter(item => {
               console.log(`Checking item in category "${category.name}":`);
               const isValid = debugItemContent(item);
@@ -1009,12 +1014,12 @@ const SortCategoriesEggConfig = () => {
       
       // Remove the last ID since we've shifted all down
       delete categoryIdsRef.current[prevCategories.length - 1];
-      
-      // Ensure there's at least one category
+    
+    // Ensure there's at least one category
       if (updatedCategories.length === 0) {
         updatedCategories.push({ name: '', items: [''] });
-      }
-      
+    }
+    
       return updatedCategories;
     });
   };
@@ -1028,7 +1033,7 @@ const SortCategoriesEggConfig = () => {
         console.warn('Invalid category index:', index);
         return prevCategories;
       }
-      
+
       // Create a new array and copy all categories
       const updatedCategories = [...prevCategories];
       
@@ -1092,15 +1097,15 @@ const SortCategoriesEggConfig = () => {
     console.log('Adding new item to category:', categoryIndex);
     const category = categories[categoryIndex];
     if (category.items.length >= MAX_ITEMS_PER_CATEGORY) {
-      toast({
+        toast({
         title: 'Maximum items reached',
         description: `You can only add up to ${MAX_ITEMS_PER_CATEGORY} items per category.`,
         status: 'warning',
-        duration: 3000,
+          duration: 3000,
         isClosable: true,
-      });
+        });
       return;
-    }
+      }
 
     setCategories(prevCategories => {
       const newCategories = [...prevCategories];
@@ -1613,8 +1618,8 @@ const SortCategoriesEggConfig = () => {
     const processedCategories = categories.map(category => {
       console.log(`Category "${category.name}": item count before filtering:`, category.items.length);
       const filtered = {
-        name: (category.name || '').trim(),
-        items: Array.isArray(category.items) 
+      name: (category.name || '').trim(),
+      items: Array.isArray(category.items) 
           ? category.items.filter(item => {
               console.log(`Checking item in category "${category.name}":`);
               const isValid = debugItemContent(item);
@@ -1743,6 +1748,9 @@ const SortCategoriesEggConfig = () => {
         });
       }
 
+      // After successful save, reset the unsaved changes flag
+      setHasUnsavedChanges(false);
+      
       // Navigate to the game with the new/updated configuration
       navigate(`/game/${configId}`);
     } catch (error) {
@@ -1805,6 +1813,22 @@ const SortCategoriesEggConfig = () => {
     };
   }, []);
 
+  // Update your form field change handlers to track unsaved changes
+  const handleTitleChange = (newTitle: string) => {
+    setTitle(newTitle);
+    setHasUnsavedChanges(true);
+  };
+  
+  const handleEggQtyChange = (newQty: number) => {
+    setEggQty(newQty);
+    setHasUnsavedChanges(true);
+  };
+  
+  const handleShareConfigChange = (newValue: boolean) => {
+    setShareConfig(newValue);
+    setHasUnsavedChanges(true);
+  };
+
   // Wrap the component with the context provider
   return (
     <EditorSelectionContext.Provider 
@@ -1861,7 +1885,7 @@ const SortCategoriesEggConfig = () => {
             <Input
               className="apple-input"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => handleTitleChange(e.target.value)}
               placeholder="Enter a title for this game configuration"
             />
           </FormControl>
@@ -1870,7 +1894,7 @@ const SortCategoriesEggConfig = () => {
             <FormLabel>Number of Eggs</FormLabel>
             <Select
               value={eggQty.toString()}
-              onChange={(e) => setEggQty(parseInt(e.target.value, 10))}
+              onChange={(e) => handleEggQtyChange(parseInt(e.target.value, 10))}
               className="apple-select"
               width="120px"
             >
@@ -2001,7 +2025,7 @@ const SortCategoriesEggConfig = () => {
                   onFocus={(e) => handleEditorFocus(e.currentTarget)}
                   onBlur={handleEditorBlur}
                 >
-                  <SlateEditor
+                <SlateEditor
                     ref={(node) => {
                       const nameKey = `name-${categoryIndex}`;
                       const editorRef = editorRefsMap.current.get(nameKey);
@@ -2013,10 +2037,10 @@ const SortCategoriesEggConfig = () => {
                         editorRefsMap.current.set(nameKey, newRef);
                       }
                     }}
-                    value={category.name}
-                    onChange={(value) => handleCategoryNameChange(categoryIndex, value)}
-                    placeholder="Enter a category name"
-                  />
+                  value={category.name}
+                  onChange={(value) => handleCategoryNameChange(categoryIndex, value)}
+                  placeholder="Enter a category name"
+                />
                 </div>
               </FormControl>
               
@@ -2044,7 +2068,7 @@ const SortCategoriesEggConfig = () => {
                           }}
                           onBlur={handleEditorBlur}
                         >
-                          <SlateEditor
+                        <SlateEditor
                             ref={(node) => {
                               const itemKey = `item-${categoryIndex}-${itemIndex}`;
                               const editorRef = editorRefsMap.current.get(itemKey);
@@ -2055,11 +2079,11 @@ const SortCategoriesEggConfig = () => {
                                 editorRefsMap.current.set(itemKey, newRef);
                               }
                             }}
-                            value={item}
-                            onChange={(value) => handleItemChange(categoryIndex, itemIndex, value)}
-                            placeholder="Enter an item"
+                          value={item}
+                          onChange={(value) => handleItemChange(categoryIndex, itemIndex, value)}
+                          placeholder="Enter an item"
                             compact
-                          />
+                        />
                         </div>
                       </Box>
                       <HStack spacing={1}>
@@ -2152,8 +2176,8 @@ const SortCategoriesEggConfig = () => {
               isDisabled={categories.length >= MAX_CATEGORIES}
               className="apple-button apple-button-primary"
             >
-              Add Category
-            </Button>
+            Add Category
+          </Button>
             
             <Text fontSize="sm" color={categories.length >= MAX_CATEGORIES ? "red.500" : "gray.600"}>
               {categories.length >= MAX_CATEGORIES 
@@ -2208,7 +2232,7 @@ const SortCategoriesEggConfig = () => {
             <FormLabel mb="0">Share Configuration</FormLabel>
             <Switch
               isChecked={shareConfig}
-              onChange={(e) => setShareConfig(e.target.checked)}
+              onChange={(e) => handleShareConfigChange(e.target.checked)}
             />
             <FormHelperText ml={2}>
               When enabled, other users can see and use this configuration

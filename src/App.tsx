@@ -1,5 +1,6 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Login from './pages/Login'
@@ -11,6 +12,7 @@ import WhackAMoleConfig from './pages/configurations/WhackAMoleConfig'
 import SortCategoriesEggConfig from './pages/configurations/SortCategoriesEggConfig'
 import Assignments from './pages/Assignments'
 import AssignmentDetails from './pages/AssignmentDetails'
+import AdminPage from './pages/AdminPage'
 
 // Create a layout component that includes the Navbar
 const Layout = ({ children }: { children: React.ReactNode }) => {
@@ -73,13 +75,19 @@ const router = createBrowserRouter([
       }
       // Additional game configuration routes will be added here
     ]
+  },
+  {
+    path: "/admin",
+    element: <Layout><AdminPage /></Layout>,
   }
 ]);
 
 function App() {
   return (
     <AuthProvider>
-      <RouterProvider router={router} />
+      <UnsavedChangesProvider>
+        <RouterProvider router={router} />
+      </UnsavedChangesProvider>
     </AuthProvider>
   )
 }

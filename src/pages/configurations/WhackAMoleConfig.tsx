@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import {
   VStack,
@@ -27,6 +27,7 @@ import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } fro
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { serverTimestamp } from 'firebase/firestore';
+import { useUnsavedChangesContext } from '../../contexts/UnsavedChangesContext';
 
 interface WordCategory {
   title: string;
@@ -84,6 +85,7 @@ const WhackAMoleConfig = () => {
   const toast = useToast();
   const { currentUser } = useAuth();
   const { onError } = useOutletContext<OutletContextType>();
+  const { setHasUnsavedChanges } = useUnsavedChangesContext();
 
   // Form state
   const [title, setTitle] = useState('');
@@ -107,6 +109,20 @@ const WhackAMoleConfig = () => {
   const [wordCategories, setWordCategories] = useState<{ title: string; words: string[] }[]>([
     { title: '', words: [] }
   ]);
+  
+  // Store initial form values for comparison
+  const initialFormValuesRef = useRef({
+    title: '',
+    gameTime: 30,
+    pointsPerHit: 10,
+    penaltyPoints: 5,
+    bonusPoints: 10,
+    bonusThreshold: 3,
+    gameSpeed: 2,
+    instructions: '',
+    shareConfig: false,
+    wordCategories: [{ title: '', words: [] }]
+  });
 
   // Load category templates from database
   useEffect(() => {
@@ -186,24 +202,57 @@ const WhackAMoleConfig = () => {
           }
 
           // Populate form fields
-          setTitle(data.title || '');
-          setGameTime(data.gameTime || 30);
-          setPointsPerHit(data.pointsPerHit || 10);
-          setPenaltyPoints(data.penaltyPoints || 5);
-          setBonusPoints(data.bonusPoints || 10);
-          setBonusThreshold(data.bonusThreshold || 3);
-          setGameSpeed(data.speed || 2);
-          setInstructions(data.instructions || '');
-          setShareConfig(data.share || false);
+          const loadedTitle = data.title || '';
+          const loadedGameTime = data.gameTime || 30;
+          const loadedPointsPerHit = data.pointsPerHit || 10;
+          const loadedPenaltyPoints = data.penaltyPoints || 5;
+          const loadedBonusPoints = data.bonusPoints || 10;
+          const loadedBonusThreshold = data.bonusThreshold || 3;
+          const loadedGameSpeed = data.speed || 2;
+          const loadedInstructions = data.instructions || '';
+          const loadedShareConfig = data.share || false;
+          
+          setTitle(loadedTitle);
+          setGameTime(loadedGameTime);
+          setPointsPerHit(loadedPointsPerHit);
+          setPenaltyPoints(loadedPenaltyPoints);
+          setBonusPoints(loadedBonusPoints);
+          setBonusThreshold(loadedBonusThreshold);
+          setGameSpeed(loadedGameSpeed);
+          setInstructions(loadedInstructions);
+          setShareConfig(loadedShareConfig);
           
           // Handle categories
+          let loadedCategories = [{ title: '', words: [] }];
           if (data.categories && Array.isArray(data.categories)) {
-            const loadedCategories = data.categories.map((cat: any) => ({
+            loadedCategories = data.categories.map((cat: any) => ({
               title: cat.title || '',
               words: Array.isArray(cat.words) ? cat.words : []
             }));
-            setWordCategories(loadedCategories.length > 0 ? loadedCategories : [{title: '', words: []}]);
+            
+            if (loadedCategories.length === 0) {
+              loadedCategories = [{ title: '', words: [] }];
+            }
           }
+          
+          setWordCategories(loadedCategories);
+          
+          // Store initial values for unsaved changes detection
+          initialFormValuesRef.current = {
+            title: loadedTitle,
+            gameTime: loadedGameTime,
+            pointsPerHit: loadedPointsPerHit,
+            penaltyPoints: loadedPenaltyPoints, 
+            bonusPoints: loadedBonusPoints,
+            bonusThreshold: loadedBonusThreshold,
+            gameSpeed: loadedGameSpeed,
+            instructions: loadedInstructions,
+            shareConfig: loadedShareConfig,
+            wordCategories: JSON.parse(JSON.stringify(loadedCategories))
+          };
+          
+          // Reset unsaved changes flag after loading
+          setHasUnsavedChanges(false);
         } else {
           // Use the parent's error handler if available, otherwise fall back to toast
           if (onError) {
@@ -231,13 +280,52 @@ const WhackAMoleConfig = () => {
             duration: 5000,
           });
         }
+        navigate('/configure/whack-a-mole');
       } finally {
         setIsLoading(false);
       }
     };
 
     loadTemplate();
-  }, [templateId, currentUser, navigate, toast, onError]);
+  }, [templateId, currentUser, navigate, toast, onError, setHasUnsavedChanges]);
+  
+  // Check for form modifications
+  useEffect(() => {
+    // Skip this check during initial load or when saving
+    if (isLoading) return;
+    
+    const currentValues = {
+      title,
+      gameTime,
+      pointsPerHit,
+      penaltyPoints,
+      bonusPoints,
+      bonusThreshold,
+      gameSpeed,
+      instructions,
+      shareConfig,
+      wordCategories: JSON.parse(JSON.stringify(wordCategories))
+    };
+    
+    // Deep comparison between current and initial values
+    const hasChanges = 
+      currentValues.title !== initialFormValuesRef.current.title ||
+      currentValues.gameTime !== initialFormValuesRef.current.gameTime ||
+      currentValues.pointsPerHit !== initialFormValuesRef.current.pointsPerHit ||
+      currentValues.penaltyPoints !== initialFormValuesRef.current.penaltyPoints ||
+      currentValues.bonusPoints !== initialFormValuesRef.current.bonusPoints ||
+      currentValues.bonusThreshold !== initialFormValuesRef.current.bonusThreshold ||
+      currentValues.gameSpeed !== initialFormValuesRef.current.gameSpeed ||
+      currentValues.instructions !== initialFormValuesRef.current.instructions ||
+      currentValues.shareConfig !== initialFormValuesRef.current.shareConfig ||
+      JSON.stringify(currentValues.wordCategories) !== JSON.stringify(initialFormValuesRef.current.wordCategories);
+    
+    setHasUnsavedChanges(hasChanges);
+  }, [
+    title, gameTime, pointsPerHit, penaltyPoints, bonusPoints, 
+    bonusThreshold, gameSpeed, instructions, shareConfig, 
+    wordCategories, isLoading, setHasUnsavedChanges
+  ]);
 
   // Handler for category selection
   const handleCategoryChange = (category: string) => {
@@ -456,6 +544,23 @@ const WhackAMoleConfig = () => {
         });
       }
 
+      // After successful save, reset the unsaved changes flag
+      setHasUnsavedChanges(false);
+      
+      // Update initial values reference
+      initialFormValuesRef.current = {
+        title,
+        gameTime,
+        pointsPerHit,
+        penaltyPoints,
+        bonusPoints,
+        bonusThreshold,
+        gameSpeed,
+        instructions,
+        shareConfig,
+        wordCategories: JSON.parse(JSON.stringify(wordCategories))
+      };
+      
       // Navigate to the game with the new/updated configuration
       navigate(`/game/${configId}`);
     } catch (error) {
