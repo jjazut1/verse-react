@@ -28,6 +28,8 @@ import {
   Select,
   FormHelperText,
 } from '@chakra-ui/react';
+import { generateAndUploadThumbnail } from '../utils/thumbnailGenerator';
+import GameItemDisplay from '../components/GameItemDisplay';
 
 const SearchBar = ({ onSearch }: { onSearch: (query: string) => void }) => (
   <div style={{
@@ -64,64 +66,109 @@ interface GameItemProps {
   onDelete?: () => void;
 }
 
+// Helper function to get background color based on game type
+function getBackgroundColorByType(type: string): string {
+  const colors: Record<string, string> = {
+    'sort-categories-egg': '#f0e6ff', // Light purple
+    'whack-a-mole': '#e6fff0',  // Light green
+    'default': 'var(--color-primary-100)'
+  };
+  
+  return colors[type] || colors.default;
+}
+
+// Helper function to get icon based on game type
+function getIconByType(type: string): string {
+  switch (type) {
+    case 'sort-categories-egg':
+      return '🥚';
+    case 'whack-a-mole':
+      return '🔨';
+    default:
+      return '';
+  }
+}
+
 const GameItem = ({ title, type, thumbnail, id, isPlayable, config, onClick, isOwner, onDelete }: GameItemProps) => {
-  const content = (
-    <>
-      <div style={{
-        width: '60px',
-        height: '60px',
-        backgroundColor: 'var(--color-primary-100)',
-        borderRadius: 'var(--border-radius-md)',
-        marginRight: 'var(--spacing-3)',
-        overflow: 'hidden',
-        flexShrink: 0
-      }}>
-        {thumbnail ? (
-          <img 
-            src={thumbnail} 
-            alt={title}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover'
-            }}
-          />
-        ) : (
-          <div style={{
+  // The icon to show when no thumbnail is available
+  const gameIcon = getIconByType(type) || title.charAt(0);
+  // Background color for the thumbnail placeholder
+  const bgColor = getBackgroundColorByType(type);
+  
+  const renderThumbnail = () => (
+    <div style={{
+      width: '60px',
+      height: '60px',
+      backgroundColor: bgColor,
+      borderRadius: 'var(--border-radius-md)',
+      marginRight: 'var(--spacing-3)',
+      overflow: 'hidden',
+      flexShrink: 0,
+      position: 'relative'
+    }}>
+      {thumbnail ? (
+        <img 
+          src={thumbnail} 
+          alt={title}
+          style={{
             width: '100%',
             height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'var(--color-primary-100)',
-            color: 'var(--color-primary-500)',
-            fontSize: 'var(--font-size-xl)'
-          }}>
-            {title.charAt(0)}
-          </div>
-        )}
-      </div>
+            objectFit: 'cover'
+          }}
+        />
+      ) : (
+        <div style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--color-primary-700)',
+          fontSize: 'var(--font-size-xl)'
+        }}>
+          {gameIcon}
+        </div>
+      )}
+      {/* Type indicator */}
       <div style={{
+        position: 'absolute',
+        bottom: '2px',
+        right: '2px',
+        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+        borderRadius: '50%',
+        width: '18px',
+        height: '18px',
         display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--spacing-1)',
-        flex: 1
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '10px'
       }}>
-        <h3 style={{
-          fontSize: 'var(--font-size-md)',
-          color: 'var(--color-gray-800)',
-          margin: 0
-        }}>
-          {title}
-        </h3>
-        <span style={{
-          fontSize: 'var(--font-size-sm)',
-          color: 'var(--color-gray-600)',
-        }}>
-          Type: {type}
-        </span>
+        {type === 'sort-categories-egg' ? 'S' : 'W'}
       </div>
-    </>
+    </div>
+  );
+  
+  const renderInfo = () => (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 'var(--spacing-1)',
+      flex: 1
+    }}>
+      <h3 style={{
+        fontSize: 'var(--font-size-md)',
+        color: 'var(--color-gray-800)',
+        margin: 0
+      }}>
+        {title}
+      </h3>
+      <span style={{
+        fontSize: 'var(--font-size-sm)',
+        color: 'var(--color-gray-600)',
+      }}>
+        Type: {type === 'sort-categories-egg' ? 'Categories' : 'Whack-a-Mole'}
+      </span>
+    </div>
   );
 
   const containerStyles = {
@@ -135,104 +182,56 @@ const GameItem = ({ title, type, thumbnail, id, isPlayable, config, onClick, isO
     cursor: isPlayable || onClick ? 'pointer' : 'default',
     transition: 'all 0.2s ease-in-out',
     textDecoration: 'none',
-    color: 'inherit'
+    color: 'inherit',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+    '&:hover': {
+      boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
+    }
   };
+
+  const renderDeleteButton = () => (
+    isOwner && onDelete && (
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete();
+        }}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          right: '16px',
+          transform: 'translateY(-50%)',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--color-gray-500)',
+          padding: 'var(--spacing-1)',
+          borderRadius: 'var(--border-radius-sm)',
+          transition: 'all 0.2s',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10
+        }}
+        aria-label="Delete"
+        title="Delete"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
+        </svg>
+      </button>
+    )
+  );
 
   if (onClick) {
     return (
       <div style={{ position: 'relative' }}>
         <div style={containerStyles} onClick={onClick}>
-          {/* Exclude the delete button from content */}
-          <>
-            <div style={{
-              width: '60px',
-              height: '60px',
-              backgroundColor: 'var(--color-primary-100)',
-              borderRadius: 'var(--border-radius-md)',
-              marginRight: 'var(--spacing-3)',
-              overflow: 'hidden',
-              flexShrink: 0
-            }}>
-              {thumbnail ? (
-                <img 
-                  src={thumbnail} 
-                  alt={title}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover'
-                  }}
-                />
-              ) : (
-                <div style={{
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: 'var(--color-primary-100)',
-                  color: 'var(--color-primary-500)',
-                  fontSize: 'var(--font-size-xl)'
-                }}>
-                  {title.charAt(0)}
-                </div>
-              )}
-            </div>
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--spacing-1)',
-              flex: 1
-            }}>
-              <h3 style={{
-                fontSize: 'var(--font-size-md)',
-                color: 'var(--color-gray-800)',
-                margin: 0
-              }}>
-                {title}
-              </h3>
-              <span style={{
-                fontSize: 'var(--font-size-sm)',
-                color: 'var(--color-gray-600)',
-              }}>
-                Type: {type}
-              </span>
-            </div>
-          </>
+          {renderThumbnail()}
+          {renderInfo()}
         </div>
-        {/* Position the delete button absolutely to overlay on the item */}
-        {isOwner && onDelete && (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onDelete();
-            }}
-            style={{
-              position: 'absolute',
-              top: '50%',
-              right: '16px',
-              transform: 'translateY(-50%)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--color-gray-500)',
-              padding: 'var(--spacing-1)',
-              borderRadius: 'var(--border-radius-sm)',
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 10
-            }}
-            aria-label="Delete"
-            title="Delete"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
-            </svg>
-          </button>
-        )}
+        {renderDeleteButton()}
       </div>
     );
   }
@@ -240,192 +239,18 @@ const GameItem = ({ title, type, thumbnail, id, isPlayable, config, onClick, isO
   return isPlayable && id ? (
     <div style={{ position: 'relative' }}>
       <RouterLink to={`/game/${id}`} style={containerStyles}>
-        {/* Exclude the delete button from the RouterLink content */}
-        <>
-          <div style={{
-            width: '60px',
-            height: '60px',
-            backgroundColor: 'var(--color-primary-100)',
-            borderRadius: 'var(--border-radius-md)',
-            marginRight: 'var(--spacing-3)',
-            overflow: 'hidden',
-            flexShrink: 0
-          }}>
-            {thumbnail ? (
-              <img 
-                src={thumbnail} 
-                alt={title}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover'
-                }}
-              />
-            ) : (
-              <div style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: 'var(--color-primary-100)',
-                color: 'var(--color-primary-500)',
-                fontSize: 'var(--font-size-xl)'
-              }}>
-                {title.charAt(0)}
-              </div>
-            )}
-          </div>
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--spacing-1)',
-            flex: 1
-          }}>
-            <h3 style={{
-              fontSize: 'var(--font-size-md)',
-              color: 'var(--color-gray-800)',
-              margin: 0
-            }}>
-              {title}
-            </h3>
-            <span style={{
-              fontSize: 'var(--font-size-sm)',
-              color: 'var(--color-gray-600)',
-            }}>
-              Type: {type}
-            </span>
-          </div>
-        </>
+        {renderThumbnail()}
+        {renderInfo()}
       </RouterLink>
-      {/* Position the delete button absolutely to overlay on the item */}
-      {isOwner && onDelete && (
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onDelete();
-          }}
-          style={{
-            position: 'absolute',
-            top: '50%',
-            right: '16px',
-            transform: 'translateY(-50%)',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--color-gray-500)',
-            padding: 'var(--spacing-1)',
-            borderRadius: 'var(--border-radius-sm)',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10
-          }}
-          aria-label="Delete"
-          title="Delete"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
-          </svg>
-        </button>
-      )}
+        {renderDeleteButton()}
     </div>
   ) : (
     <div style={{ position: 'relative' }}>
       <div style={containerStyles}>
-        {/* Exclude the delete button from content */}
-        <>
-          <div style={{
-            width: '60px',
-            height: '60px',
-            backgroundColor: 'var(--color-primary-100)',
-            borderRadius: 'var(--border-radius-md)',
-            marginRight: 'var(--spacing-3)',
-            overflow: 'hidden',
-            flexShrink: 0
-          }}>
-            {thumbnail ? (
-              <img 
-                src={thumbnail} 
-                alt={title}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover'
-                }}
-              />
-            ) : (
-              <div style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: 'var(--color-primary-100)',
-                color: 'var(--color-primary-500)',
-                fontSize: 'var(--font-size-xl)'
-              }}>
-                {title.charAt(0)}
-              </div>
-            )}
-          </div>
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--spacing-1)',
-            flex: 1
-          }}>
-            <h3 style={{
-              fontSize: 'var(--font-size-md)',
-              color: 'var(--color-gray-800)',
-              margin: 0
-            }}>
-              {title}
-            </h3>
-            <span style={{
-              fontSize: 'var(--font-size-sm)',
-              color: 'var(--color-gray-600)',
-            }}>
-              Type: {type}
-            </span>
-          </div>
-        </>
+        {renderThumbnail()}
+        {renderInfo()}
       </div>
-      {/* Position the delete button absolutely to overlay on the item */}
-      {isOwner && onDelete && (
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onDelete();
-          }}
-          style={{
-            position: 'absolute',
-            top: '50%',
-            right: '16px',
-            transform: 'translateY(-50%)',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--color-gray-500)',
-            padding: 'var(--spacing-1)',
-            borderRadius: 'var(--border-radius-sm)',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10
-          }}
-          aria-label="Delete"
-          title="Delete"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
-          </svg>
-        </button>
-      )}
+        {renderDeleteButton()}
     </div>
   );
 };
@@ -1119,6 +944,7 @@ const Home = () => {
 
       let formattedCategories: Category[] | WordCategory[];
       let baseConfigData: any;
+      let docId: string = config.id || '';
 
       if (config.type === 'whack-a-mole') {
         // Format whack-a-mole categories
@@ -1157,9 +983,11 @@ const Home = () => {
             ...baseConfigData,
             updatedAt: serverTimestamp()
           });
+          docId = config.id;
         } else {
           const docRef = await addDoc(collection(db, 'userGameConfigs'), baseConfigData);
-          config.id = docRef.id;
+          docId = docRef.id;
+          config.id = docId;
         }
       } else {
         // Format sort-categories-egg categories
@@ -1193,10 +1021,39 @@ const Home = () => {
             ...baseConfigData,
             updatedAt: serverTimestamp()
           });
+          docId = config.id;
         } else {
           const docRef = await addDoc(collection(db, 'userGameConfigs'), baseConfigData);
-          config.id = docRef.id;
+          docId = docRef.id;
+          config.id = docId;
         }
+      }
+
+      // Generate and upload thumbnail after saving the document
+      try {
+        if (docId) {
+          console.log('Generating thumbnail for document ID:', docId);
+          
+          // Generate game-specific thumbnail data
+          const gameData = {
+            ...baseConfigData,
+            id: docId
+          };
+          
+          // Generate and upload the thumbnail
+          const thumbnailUrl = await generateAndUploadThumbnail(docId, gameData);
+          
+          // Update the document with the thumbnail URL
+          if (thumbnailUrl) {
+            await updateDoc(doc(db, 'userGameConfigs', docId), {
+              thumbnail: thumbnailUrl
+            });
+            console.log('Thumbnail generated and saved:', thumbnailUrl);
+          }
+        }
+      } catch (thumbnailError) {
+        console.error('Error generating thumbnail:', thumbnailError);
+        // Continue without thumbnail - it's not critical to game functionality
       }
 
       toast({
@@ -1221,6 +1078,63 @@ const Home = () => {
         duration: 5000,
       });
     }
+  };
+
+  // For free games section
+  const renderGamesList = (
+    games: GameObject[],
+    isOwner: boolean,
+    handleDeleteClick: (id: string, type: 'template' | 'game', title: string) => void
+  ) => {
+    return games.length > 0 ? (
+      <div>
+        {games.map(game => (
+          <GameItemDisplay
+            key={game.id}
+            id={game.id}
+            title={game.title}
+            type={game.type}
+            thumbnail={game.thumbnail}
+            isPlayable={true}
+            isOwner={isOwner}
+            onDelete={() => handleDeleteClick(game.id, 'game', game.title)}
+          />
+        ))}
+      </div>
+    ) : (
+      <div style={{ textAlign: 'center', padding: 'var(--spacing-4)', color: 'var(--color-gray-500)' }}>
+        No games found
+      </div>
+    );
+  };
+
+  // For modifiable and blank templates section
+  const renderTemplatesList = (
+    templates: GameObject[],
+    isOwner: boolean,
+    onTemplateClick: (template: any) => void,
+    handleDeleteClick?: (id: string, type: 'template' | 'game', title: string) => void
+  ) => {
+    return templates.length > 0 ? (
+      <div>
+        {templates.map(template => (
+          <GameItemDisplay
+            key={template.id}
+            title={template.title}
+            type={template.type}
+            thumbnail={template.thumbnail}
+            isPlayable={false}
+            onClick={() => onTemplateClick(template)}
+            isOwner={isOwner}
+            onDelete={handleDeleteClick ? () => handleDeleteClick(template.id, 'template', template.title) : undefined}
+          />
+        ))}
+      </div>
+    ) : (
+      <div style={{ textAlign: 'center', padding: 'var(--spacing-4)', color: 'var(--color-gray-500)' }}>
+        No templates found
+      </div>
+    );
   };
 
   return (
@@ -1301,18 +1215,7 @@ const Home = () => {
                       }}>
                         My Games
                       </h3>
-                      {userOwnedGames.map(game => (
-                        <GameItem 
-                          key={game.id} 
-                          id={game.id}
-                          title={game.title} 
-                          type={game.type}
-                          thumbnail={game.thumbnail}
-                          isPlayable={true}
-                          isOwner={currentUser && game.userId === currentUser.uid}
-                          onDelete={() => handleDeleteClick(game.id, 'game', game.title)}
-                        />
-                      ))}
+                      {renderGamesList(userOwnedGames, true, handleDeleteClick)}
                     </div>
                   )}
                   
@@ -1330,23 +1233,7 @@ const Home = () => {
                           Other Public Games
                         </h3>
                       )}
-                      {otherPublicGames.map(game => (
-                        <GameItem 
-                          key={game.id} 
-                          id={game.id}
-                          title={game.title} 
-                          type={game.type}
-                          thumbnail={game.thumbnail}
-                          isPlayable={true}
-                          isOwner={false}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  
-                  {userOwnedGames.length === 0 && otherPublicGames.length === 0 && (
-                    <div style={{ textAlign: 'center', padding: 'var(--spacing-4)' }}>
-                      No games found
+                      {renderGamesList(otherPublicGames, false, handleDeleteClick)}
                     </div>
                   )}
                 </>
@@ -1388,17 +1275,7 @@ const Home = () => {
                       }}>
                         My Templates
                       </h3>
-                      {userOwnedTemplates.map(template => (
-                        <GameItem 
-                          key={template.id} 
-                          title={template.title} 
-                          type={template.type}
-                          thumbnail={template.thumbnail}
-                          onClick={() => handleTemplateClick(template)}
-                          isOwner={currentUser && template.userId === currentUser.uid}
-                          onDelete={() => handleDeleteClick(template.id, 'template', template.title)}
-                        />
-                      ))}
+                      {renderTemplatesList(userOwnedTemplates, true, handleTemplateClick, handleDeleteClick)}
                     </div>
                   )}
                   
@@ -1416,16 +1293,7 @@ const Home = () => {
                           Other Templates
                         </h3>
                       )}
-                      {otherTemplates.map(template => (
-                        <GameItem 
-                          key={template.id} 
-                          title={template.title} 
-                          type={template.type}
-                          thumbnail={template.thumbnail}
-                          onClick={() => handleTemplateClick(template)}
-                          isOwner={false}
-                        />
-                      ))}
+                      {renderTemplatesList(otherTemplates, false, handleTemplateClick, handleDeleteClick)}
                     </div>
                   )}
                   
@@ -1459,21 +1327,8 @@ const Home = () => {
                 <div style={{ textAlign: 'center', padding: 'var(--spacing-4)' }}>
                   Loading templates...
                 </div>
-              ) : filteredBlank.length > 0 ? (
-                filteredBlank.map(template => (
-                  <GameItem 
-                    key={template.id} 
-                    title={template.title} 
-                    type={template.type}
-                    thumbnail={template.thumbnail}
-                    onClick={() => handleTemplateClick(template, true)}
-                    isOwner={false}
-                  />
-                ))
               ) : (
-                <div style={{ textAlign: 'center', padding: 'var(--spacing-4)' }}>
-                  No templates found
-                </div>
+                renderTemplatesList(filteredBlank, false, (template) => handleTemplateClick(template, true))
               )}
             </div>
           </div>
