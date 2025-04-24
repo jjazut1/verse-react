@@ -20,7 +20,7 @@ const buttonStyle = {
 };
 
 const Navbar = () => {
-  const { currentUser, isTeacher, loginWithGoogle, logout } = useAuth();
+  const { currentUser, isTeacher, logout } = useAuth();
 
   return (
     <nav style={{ backgroundColor: 'var(--color-primary-500)', padding: 'var(--spacing-4)' }}>
@@ -74,14 +74,18 @@ const Navbar = () => {
               </button>
             </>
           ) : (
-            <button
-              onClick={loginWithGoogle}
-              style={buttonStyle}
+            <RouterLink
+              to="/login"
+              style={{
+                ...buttonStyle,
+                textDecoration: 'none',
+                display: 'inline-block'
+              }}
               onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
               onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
             >
-              Login with Google
-            </button>
+              Login / Sign Up
+            </RouterLink>
           )}
         </div>
       </div>

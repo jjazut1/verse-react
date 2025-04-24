@@ -2,6 +2,8 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
+import Login from './pages/Login'
+import ForgotPassword from './pages/ForgotPassword'
 import GamePlayer from './components/GamePlayer'
 import TeacherDashboard from './pages/TeacherDashboard'
 import ConfigurationRouter from './pages/configurations/ConfigurationRouter'
@@ -22,6 +24,14 @@ const router = createBrowserRouter([
   {
     path: "/",
     element: <Layout><Home /></Layout>,
+  },
+  {
+    path: "/login",
+    element: <Layout><Login /></Layout>,
+  },
+  {
+    path: "/forgot-password",
+    element: <Layout><ForgotPassword /></Layout>,
   },
   {
     path: "/game/:configId",
