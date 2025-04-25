@@ -621,7 +621,7 @@ const WhackAMoleConfig = () => {
       // Prepare the template data
       const templateData = {
         type: 'whack-a-mole',
-        title: firstCategory.title || title,
+        title: title.trim(),
         words: wordCategory.words,
         // Include all relevant configuration data
         gameTime,
