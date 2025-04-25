@@ -767,7 +767,13 @@ const Home = () => {
         setLoading(true);
         
         // Query for user's own games and publicly shared games by others
-        const [userOwnGamesSnapshot, publicGamesSnapshot, templatesSnapshot, blankTemplatesSnapshot] = await Promise.all([
+        const [
+          userOwnGamesSnapshot, 
+          publicGamesSnapshot, 
+          sortCategoriesTemplatesSnapshot,
+          whackAMoleTemplatesSnapshot, 
+          blankTemplatesSnapshot
+        ] = await Promise.all([
           // Get all of the current user's games (both private and public)
           currentUser ? getDocs(query(
             collection(db, 'userGameConfigs'),
@@ -780,10 +786,16 @@ const Home = () => {
             where('share', '==', true)
           )),
           
-          // Get modifiable templates from categoryTemplates
+          // Get sort-categories-egg modifiable templates
           getDocs(query(
             collection(db, 'categoryTemplates'),
             where('type', '==', 'sort-categories-egg')
+          )),
+          
+          // Get whack-a-mole modifiable templates
+          getDocs(query(
+            collection(db, 'categoryTemplates'),
+            where('type', '==', 'whack-a-mole')
           )),
           
           // Get blank templates
@@ -815,8 +827,8 @@ const Home = () => {
         // Combine into a single array for public games display
         setPublicGames([...userGames, ...otherGames]);
 
-        // Process modifiable templates from categoryTemplates collection
-        const templates = templatesSnapshot.docs.map(doc => ({
+        // Process sort-categories-egg templates
+        const sortCategoriesTemplates = sortCategoriesTemplatesSnapshot.docs.map(doc => ({
           id: doc.id,
           title: doc.data().title || 'Untitled Template',
           type: doc.data().type || 'sort-categories-egg',
@@ -826,7 +838,20 @@ const Home = () => {
           eggQty: doc.data().eggQty || 6,
           share: doc.data().share || false
         }));
-        setModifiableTemplates(templates);
+        
+        // Process whack-a-mole templates
+        const whackAMoleTemplates = whackAMoleTemplatesSnapshot.docs.map(doc => ({
+          id: doc.id,
+          title: doc.data().title || 'Untitled Template',
+          type: doc.data().type || 'whack-a-mole',
+          thumbnail: doc.data().thumbnail,
+          userId: doc.data().userId,
+          words: doc.data().words || [],
+          share: doc.data().share || false
+        }));
+        
+        // Combine all templates
+        setModifiableTemplates([...sortCategoriesTemplates, ...whackAMoleTemplates]);
 
         // Process blank templates
         const blankTemplatesData = blankTemplatesSnapshot.docs.map(doc => {
