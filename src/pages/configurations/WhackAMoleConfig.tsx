@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, memo } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import {
   VStack,
@@ -22,16 +22,58 @@ import {
   Text,
   HStack,
   Spinner,
+  IconButton,
+  Flex
 } from '@chakra-ui/react';
+import { ChevronUpIcon, ChevronDownIcon, DeleteIcon, AddIcon } from '@chakra-ui/icons';
 import { collection, addDoc, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { serverTimestamp } from 'firebase/firestore';
 import { useUnsavedChangesContext } from '../../contexts/UnsavedChangesContext';
+import SlateEditor from '../../components/SlateEditor';
+import { isEqual } from 'lodash';
+
+// Create context for editor selection
+interface EditorSelectionContextType {
+  activeEditorId: string | null;
+  setActiveEditorId: (id: string | null) => void;
+  lastSelectionPath: [number, number] | null; // [categoryIndex, itemIndex] or null
+  setLastSelectionPath: (path: [number, number] | null) => void;
+}
+
+const EditorSelectionContext = createContext<EditorSelectionContextType>({
+  activeEditorId: null,
+  setActiveEditorId: () => {},
+  lastSelectionPath: null,
+  setLastSelectionPath: () => {}
+});
+
+// Use the editor selection context
+const useEditorSelection = () => useContext(EditorSelectionContext);
 
 interface WordCategory {
   title: string;
   words: string[];
+  gameTime?: number;
+  pointsPerHit?: number;
+  penaltyPoints?: number;
+  bonusPoints?: number;
+  bonusThreshold?: number;
+  speed?: number;
+  instructions?: string;
+  share?: boolean;
+}
+
+interface CategoryItem {
+  id: string;
+  content: any; // Rich text content
+}
+
+interface Category {
+  id: string;
+  title: string;
+  items: CategoryItem[];
 }
 
 // Default word categories that can be used as fallback if database fetch fails
@@ -74,10 +116,161 @@ const DEFAULT_WORD_CATEGORIES: Record<string, WordCategory> = {
   }
 };
 
+// Convert WordCategory to Category (with rich text structure)
+const convertWordCategoryToCategory = (wordCategory: WordCategory): Category => {
+  return {
+    id: Math.random().toString(36).substring(2, 9),
+    title: wordCategory.title,
+    items: wordCategory.words.map(word => ({
+      id: Math.random().toString(36).substring(2, 9),
+      content: [{ type: 'paragraph', children: [{ text: word }] }]
+    }))
+  };
+};
+
+// Convert Category to WordCategory format (for backward compatibility)
+const convertCategoryToWordCategory = (category: Category): WordCategory => {
+  return {
+    title: category.title,
+    words: category.items.map(item => {
+      // Extract plain text from the rich text content
+      if (typeof item.content === 'string') return item.content;
+      
+      try {
+        // Extract text from Slate structure
+        let text = '';
+        const traverse = (nodes: any[]) => {
+          for (const node of nodes) {
+            if (typeof node.text === 'string') {
+              text += node.text;
+            } else if (node.children) {
+              traverse(node.children);
+            }
+          }
+        };
+        
+        traverse(Array.isArray(item.content) ? item.content : []);
+        return text.trim();
+      } catch (e) {
+        console.error('Error extracting text from rich content:', e);
+        return '';
+      }
+    }).filter(Boolean)
+  };
+};
+
+// Utility function to generate a unique ID
+const generateId = () => Math.random().toString(36).substring(2, 9);
+
+// Delete an item from a category
+const deleteItemFromCategory = (
+  categories: Category[],
+  categoryIndex: number,
+  itemIndex: number
+): Category[] => {
+  return categories.map((category, catIdx) => {
+    if (catIdx !== categoryIndex) return category;
+    
+    const newItems = [...category.items];
+    newItems.splice(itemIndex, 1);
+    
+    return {
+      ...category,
+      items: newItems
+    };
+  });
+};
+
 // Add interface for the outlet context
 interface OutletContextType {
   onError?: (message: string) => void;
 }
+
+// Create a wrapper component for SlateEditor that adds onFocus capability
+const ItemEditor = ({ 
+  value, 
+  onChange, 
+  placeholder, 
+  label, 
+  onFocus, 
+  editorId 
+}: { 
+  value: any; 
+  onChange: (value: any) => void; 
+  placeholder?: string; 
+  label?: string; 
+  onFocus?: (event: React.FocusEvent<HTMLDivElement>) => void;
+  editorId: string;
+}) => {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (wrapperRef.current) {
+      const divElement = wrapperRef.current;
+      // Add focus event listener to the div
+      const handleFocus = (e: FocusEvent) => {
+        if (onFocus && e.target instanceof HTMLDivElement) {
+          onFocus(e as unknown as React.FocusEvent<HTMLDivElement>);
+        }
+      };
+      
+      divElement.addEventListener('focusin', handleFocus);
+      
+      return () => {
+        divElement.removeEventListener('focusin', handleFocus);
+      };
+    }
+  }, [onFocus]);
+
+  return (
+    <div 
+      ref={wrapperRef} 
+      className="item-editor-wrapper" 
+      data-editor-id={editorId}
+      style={{
+        display: 'flex',
+        alignItems: 'center'
+      }}
+    >
+      {label && (
+        <span 
+          className="item-number"
+          style={{
+            marginRight: '8px',
+            color: 'var(--color-gray-600)',
+            fontSize: 'var(--font-size-md)',
+            minWidth: '20px'
+          }}
+        >
+          {label}
+        </span>
+      )}
+      <div style={{ flexGrow: 1 }}>
+        <SlateEditor
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+        />
+      </div>
+    </div>
+  );
+};
+
+// Memoize the ItemEditor to improve performance
+const MemoizedItemEditor = memo(ItemEditor, (prevProps, nextProps) => {
+  // Compare props for equality (except complex objects like onChange function)
+  if (prevProps.placeholder !== nextProps.placeholder) return false;
+  if (prevProps.label !== nextProps.label) return false;
+  if (prevProps.editorId !== nextProps.editorId) return false;
+  
+  // Deep compare content (this is the expensive part)
+  try {
+    return isEqual(prevProps.value, nextProps.value);
+  } catch (e) {
+    // If comparison fails, re-render to be safe
+    return false;
+  }
+});
 
 const WhackAMoleConfig = () => {
   const { templateId } = useParams();
@@ -86,6 +279,10 @@ const WhackAMoleConfig = () => {
   const { currentUser } = useAuth();
   const { onError } = useOutletContext<OutletContextType>();
   const { setHasUnsavedChanges } = useUnsavedChangesContext();
+  
+  // Editor selection state
+  const [activeEditorId, setActiveEditorId] = useState<string | null>(null);
+  const [lastSelectionPath, setLastSelectionPath] = useState<[number, number] | null>(null);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -105,10 +302,15 @@ const WhackAMoleConfig = () => {
   const [dbTemplates, setDbTemplates] = useState<Record<string, WordCategory>>({});
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   
-  // Category management
-  const [wordCategories, setWordCategories] = useState<{ title: string; words: string[] }[]>([
-    { title: '', words: [] }
-  ]);
+  // Category management - updated to use new Category interface
+  const [categories, setCategories] = useState<Category[]>([{
+    id: generateId(),
+    title: '',
+    items: [{
+      id: generateId(),
+      content: [{ type: 'paragraph', children: [{ text: '' }] }]
+    }]
+  }]);
   
   // Store initial form values for comparison
   const initialFormValuesRef = useRef({
@@ -121,7 +323,7 @@ const WhackAMoleConfig = () => {
     gameSpeed: 2,
     instructions: '',
     shareConfig: false,
-    wordCategories: [{ title: '', words: [] }]
+    categories: [] as Category[]
   });
 
   // Load category templates from database
@@ -142,7 +344,15 @@ const WhackAMoleConfig = () => {
           const data = doc.data();
           templates[doc.id] = {
             title: data.title || 'Untitled Template',
-            words: Array.isArray(data.words) ? data.words : []
+            words: Array.isArray(data.words) ? data.words : [],
+            gameTime: data.gameTime,
+            pointsPerHit: data.pointsPerHit,
+            penaltyPoints: data.penaltyPoints,
+            bonusPoints: data.bonusPoints,
+            bonusThreshold: data.bonusThreshold,
+            speed: data.speed,
+            instructions: data.instructions,
+            share: data.share
           };
         });
         
@@ -223,19 +433,29 @@ const WhackAMoleConfig = () => {
           setShareConfig(loadedShareConfig);
           
           // Handle categories
-          let loadedCategories = [{ title: '', words: [] }];
+          let loadedWordCategories = [{ title: '', words: [] }];
           if (data.categories && Array.isArray(data.categories)) {
-            loadedCategories = data.categories.map((cat: any) => ({
+            loadedWordCategories = data.categories.map((cat: any) => ({
               title: cat.title || '',
-              words: Array.isArray(cat.words) ? cat.words : []
+              words: Array.isArray(cat.words) ? cat.words : [],
+              gameTime: cat.gameTime,
+              pointsPerHit: cat.pointsPerHit,
+              penaltyPoints: cat.penaltyPoints,
+              bonusPoints: cat.bonusPoints,
+              bonusThreshold: cat.bonusThreshold,
+              speed: cat.speed,
+              instructions: cat.instructions,
+              share: cat.share
             }));
             
-            if (loadedCategories.length === 0) {
-              loadedCategories = [{ title: '', words: [] }];
+            if (loadedWordCategories.length === 0) {
+              loadedWordCategories = [{ title: '', words: [] }];
             }
           }
           
-          setWordCategories(loadedCategories);
+          // Convert word categories to our rich text format
+          const loadedCategories = loadedWordCategories.map(convertWordCategoryToCategory);
+          setCategories(loadedCategories);
           
           // Store initial values for unsaved changes detection
           initialFormValuesRef.current = {
@@ -248,7 +468,7 @@ const WhackAMoleConfig = () => {
             gameSpeed: loadedGameSpeed,
             instructions: loadedInstructions,
             shareConfig: loadedShareConfig,
-            wordCategories: JSON.parse(JSON.stringify(loadedCategories))
+            categories: JSON.parse(JSON.stringify(loadedCategories))
           };
           
           // Reset unsaved changes flag after loading
@@ -304,7 +524,7 @@ const WhackAMoleConfig = () => {
       gameSpeed,
       instructions,
       shareConfig,
-      wordCategories: JSON.parse(JSON.stringify(wordCategories))
+      categories: JSON.parse(JSON.stringify(categories))
     };
     
     // Deep comparison between current and initial values
@@ -318,13 +538,13 @@ const WhackAMoleConfig = () => {
       currentValues.gameSpeed !== initialFormValuesRef.current.gameSpeed ||
       currentValues.instructions !== initialFormValuesRef.current.instructions ||
       currentValues.shareConfig !== initialFormValuesRef.current.shareConfig ||
-      JSON.stringify(currentValues.wordCategories) !== JSON.stringify(initialFormValuesRef.current.wordCategories);
+      JSON.stringify(currentValues.categories) !== JSON.stringify(initialFormValuesRef.current.categories);
     
     setHasUnsavedChanges(hasChanges);
   }, [
     title, gameTime, pointsPerHit, penaltyPoints, bonusPoints, 
     bonusThreshold, gameSpeed, instructions, shareConfig, 
-    wordCategories, isLoading, setHasUnsavedChanges
+    categories, isLoading, setHasUnsavedChanges
   ]);
 
   // Handler for category selection
@@ -339,19 +559,23 @@ const WhackAMoleConfig = () => {
       if (!title || window.confirm("Do you want to replace the current title and words with this preset?")) {
         setTitle(templateData.title);
         
+        // Update game configuration from template if available
+        if (templateData.gameTime) setGameTime(templateData.gameTime);
+        if (templateData.pointsPerHit) setPointsPerHit(templateData.pointsPerHit);
+        if (templateData.penaltyPoints) setPenaltyPoints(templateData.penaltyPoints);
+        if (templateData.bonusPoints) setBonusPoints(templateData.bonusPoints);
+        if (templateData.bonusThreshold) setBonusThreshold(templateData.bonusThreshold);
+        if (templateData.speed) setGameSpeed(templateData.speed);
+        if (templateData.instructions) setInstructions(templateData.instructions);
+        if (templateData.share !== undefined) setShareConfig(templateData.share);
+        
         // Update the first category or add if none exist
-        if (wordCategories.length === 0) {
-          setWordCategories([{ 
-            title: templateData.title, 
-            words: [...templateData.words] 
-          }]);
+        if (categories.length === 0) {
+          setCategories([convertWordCategoryToCategory(templateData)]);
         } else {
-          const newCategories = [...wordCategories];
-          newCategories[0] = { 
-            title: templateData.title, 
-            words: [...templateData.words] 
-          };
-          setWordCategories(newCategories);
+          const newCategories = [...categories];
+          newCategories[0] = convertWordCategoryToCategory(templateData);
+          setCategories(newCategories);
         }
       }
     }
@@ -380,7 +604,7 @@ const WhackAMoleConfig = () => {
     }
 
     // Get words from the first category
-    if (wordCategories.length === 0 || wordCategories[0].words.length === 0) {
+    if (categories.length === 0 || categories[0].items.length === 0) {
       toast({
         title: "Missing Words",
         description: "Please add at least one category with words.",
@@ -390,15 +614,26 @@ const WhackAMoleConfig = () => {
       return;
     }
 
-    const firstCategory = wordCategories[0];
+    const firstCategory = categories[0];
+    const wordCategory = convertCategoryToWordCategory(firstCategory);
     
     try {
       // Prepare the template data
       const templateData = {
         type: 'whack-a-mole',
         title: firstCategory.title || title,
-        words: firstCategory.words,
+        words: wordCategory.words,
+        // Include all relevant configuration data
+        gameTime,
+        pointsPerHit,
+        penaltyPoints,
+        bonusPoints,
+        bonusThreshold,
+        speed: gameSpeed,
+        instructions,
+        share: shareConfig,
         userId: currentUser.uid,
+        email: currentUser.email,
         createdAt: serverTimestamp()
       };
 
@@ -410,7 +645,16 @@ const WhackAMoleConfig = () => {
         ...dbTemplates,
         [docRef.id]: {
           title: templateData.title,
-          words: templateData.words
+          words: templateData.words,
+          // Include the additional properties for proper rendering
+          gameTime: templateData.gameTime,
+          pointsPerHit: templateData.pointsPerHit,
+          penaltyPoints: templateData.penaltyPoints,
+          bonusPoints: templateData.bonusPoints,
+          bonusThreshold: templateData.bonusThreshold,
+          speed: templateData.speed,
+          instructions: templateData.instructions,
+          share: templateData.share
         }
       });
       
@@ -437,25 +681,119 @@ const WhackAMoleConfig = () => {
 
   // Category management handlers
   const handleAddCategory = () => {
-    setWordCategories([...wordCategories, { title: '', words: [] }]);
+    setCategories([...categories, {
+      id: generateId(),
+      title: '',
+      items: [{
+        id: generateId(),
+        content: [{ type: 'paragraph', children: [{ text: '' }] }]
+      }]
+    }]);
   };
 
   const handleRemoveCategory = (index: number) => {
-    const newCategories = [...wordCategories];
+    const newCategories = [...categories];
     newCategories.splice(index, 1);
-    setWordCategories(newCategories);
+    setCategories(newCategories);
   };
 
   const handleCategoryTitleChange = (index: number, value: string) => {
-    const newCategories = [...wordCategories];
+    const newCategories = [...categories];
     newCategories[index].title = value;
-    setWordCategories(newCategories);
+    setCategories(newCategories);
   };
 
   const handleCategoryWordsChange = (index: number, value: string) => {
-    const newCategories = [...wordCategories];
-    newCategories[index].words = value.split(',').map(word => word.trim()).filter(Boolean);
-    setWordCategories(newCategories);
+    const newCategories = [...categories];
+    newCategories[index].items = value.split(',').map(word => ({
+      id: generateId(),
+      content: [{ type: 'paragraph', children: [{ text: word.trim() }] }]
+    }));
+    setCategories(newCategories);
+  };
+
+  // Handler functions for item management
+  const handleItemContentChange = (categoryIndex: number, itemIndex: number, content: any) => {
+    const newCategories = [...categories];
+    if (newCategories[categoryIndex] && newCategories[categoryIndex].items[itemIndex]) {
+      newCategories[categoryIndex].items[itemIndex].content = content;
+      setCategories(newCategories);
+    }
+  };
+
+  const handleAddItem = (categoryIndex: number) => {
+    const newCategories = [...categories];
+    if (newCategories[categoryIndex]) {
+      newCategories[categoryIndex].items.push({
+        id: generateId(),
+        content: [{ type: 'paragraph', children: [{ text: '' }] }]
+      });
+      setCategories(newCategories);
+    }
+  };
+
+  const handleMoveItemUp = (categoryIndex: number, itemIndex: number) => {
+    if (itemIndex <= 0) return;
+    
+    const newCategories = [...categories];
+    const category = newCategories[categoryIndex];
+    if (!category) return;
+    
+    const temp = category.items[itemIndex];
+    category.items[itemIndex] = category.items[itemIndex - 1];
+    category.items[itemIndex - 1] = temp;
+    
+    setCategories(newCategories);
+  };
+
+  const handleMoveItemDown = (categoryIndex: number, itemIndex: number) => {
+    const newCategories = [...categories];
+    const category = newCategories[categoryIndex];
+    if (!category || itemIndex >= category.items.length - 1) return;
+    
+    const temp = category.items[itemIndex];
+    category.items[itemIndex] = category.items[itemIndex + 1];
+    category.items[itemIndex + 1] = temp;
+    
+    setCategories(newCategories);
+  };
+
+  // Get stable ID for the editor
+  const getStableItemId = (categoryIndex: number, itemIndex: number) => {
+    if (categories[categoryIndex] && categories[categoryIndex].items[itemIndex]) {
+      return categories[categoryIndex].items[itemIndex].id;
+    }
+    return `item-${categoryIndex}-${itemIndex}`;
+  };
+
+  // Handle editor focus event
+  const handleEditorFocus = (editorId: string) => (event: React.FocusEvent<HTMLDivElement>) => {
+    setActiveEditorId(editorId);
+    // Find the category and item index based on the editor ID
+    for (let categoryIndex = 0; categoryIndex < categories.length; categoryIndex++) {
+      const category = categories[categoryIndex];
+      for (let itemIndex = 0; itemIndex < category.items.length; itemIndex++) {
+        const item = category.items[itemIndex];
+        if (item.id === editorId) {
+          setLastSelectionPath([categoryIndex, itemIndex]);
+          break;
+        }
+      }
+    }
+  };
+
+  const handleDeleteItem = (categoryIndex: number, itemIndex: number) => {
+    const updatedCategories = deleteItemFromCategory(categories, categoryIndex, itemIndex);
+    
+    // If this was the last item in the category, add a new empty item
+    if (updatedCategories[categoryIndex] && updatedCategories[categoryIndex].items.length === 0) {
+      updatedCategories[categoryIndex].items.push({
+        id: generateId(),
+        content: [{ type: 'paragraph', children: [{ text: '' }] }]
+      });
+    }
+    
+    setCategories(updatedCategories);
   };
 
   // Form submission handler
@@ -482,8 +820,29 @@ const WhackAMoleConfig = () => {
     }
 
     // Validate categories
-    const validCategories = wordCategories.filter(cat => 
-      cat.title.trim() && cat.words.length > 0
+    const validCategories = categories.filter(cat => 
+      cat.title.trim() && cat.items.length > 0 && cat.items.some(item => {
+        // Check if the item has content
+        if (typeof item.content === 'string') return item.content.trim().length > 0;
+        if (Array.isArray(item.content)) {
+          // For Slate structure, check if there's text content
+          let hasText = false;
+          const traverse = (nodes: any[]) => {
+            for (const node of nodes) {
+              if (typeof node.text === 'string' && node.text.trim().length > 0) {
+                hasText = true;
+                break;
+              } else if (node.children) {
+                traverse(node.children);
+                if (hasText) break;
+              }
+            }
+          };
+          traverse(item.content);
+          return hasText;
+        }
+        return false;
+      })
     );
 
     if (validCategories.length === 0) {
@@ -499,6 +858,9 @@ const WhackAMoleConfig = () => {
     setIsLoading(true);
 
     try {
+      // Convert our rich text categories to the format expected by the database
+      const wordCategoriesForDb = validCategories.map(convertCategoryToWordCategory);
+
       // Prepare the configuration data
       const configData = {
         type: 'whack-a-mole',
@@ -510,7 +872,7 @@ const WhackAMoleConfig = () => {
         bonusThreshold,
         speed: gameSpeed,
         instructions,
-        categories: validCategories,
+        categories: wordCategoriesForDb,
         share: shareConfig,
         userId: currentUser.uid,
         email: currentUser.email,
@@ -558,7 +920,7 @@ const WhackAMoleConfig = () => {
         gameSpeed,
         instructions,
         shareConfig,
-        wordCategories: JSON.parse(JSON.stringify(wordCategories))
+        categories: JSON.parse(JSON.stringify(categories))
       };
       
       // Navigate to the game with the new/updated configuration
@@ -577,246 +939,307 @@ const WhackAMoleConfig = () => {
   };
 
   return (
-    <VStack spacing={6} align="stretch">
-      <Box>
-        <Heading size="md" mb={4}>Game Settings</Heading>
-        
-        <FormControl mb={4}>
-          <FormLabel>Word Category Template</FormLabel>
-          {loadingTemplates ? (
-            <HStack>
-              <Spinner size="sm" />
-              <Text>Loading templates...</Text>
-            </HStack>
-          ) : (
-            <>
-              <Select
-                value={gameCategory}
-                onChange={(e) => handleCategoryChange(e.target.value)}
-                placeholder="Select a word category (optional)"
-              >
-                {Object.entries(dbTemplates).map(([key, template]) => (
-                  <option key={key} value={key}>
-                    {template.title}
-                  </option>
-                ))}
-              </Select>
-              <FormHelperText>
-                Select a preset word category to quickly populate your game
-              </FormHelperText>
-            </>
-          )}
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Configuration Title</FormLabel>
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Enter a title for this game"
-          />
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Game Time (seconds)</FormLabel>
-          <NumberInput
-            value={gameTime}
-            onChange={(_, value) => setGameTime(value)}
-            min={30}
-            max={300}
-          >
-            <NumberInputField />
-            <NumberInputStepper>
-              <NumberIncrementStepper />
-              <NumberDecrementStepper />
-            </NumberInputStepper>
-          </NumberInput>
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Game Speed</FormLabel>
-          <Select
-            value={gameSpeed}
-            onChange={(e) => setGameSpeed(Number(e.target.value))}
-          >
-            <option value={1}>Slow (10-12 moles)</option>
-            <option value={2}>Medium (14-16 moles)</option>
-            <option value={3}>Fast (17-19 moles)</option>
-          </Select>
-          <FormHelperText>Controls how frequently moles appear during the game</FormHelperText>
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Game Instructions</FormLabel>
-          <Textarea
-            value={instructions}
-            onChange={(e) => setInstructions(e.target.value)}
-            placeholder="Enter custom instructions for players"
-            rows={3}
-          />
-          <FormHelperText>
-            Custom instructions to show on the game start screen. If left empty, default instructions will be shown.
-          </FormHelperText>
-        </FormControl>
-      </Box>
-
-      <Box>
-        <Heading size="md" mb={4}>Scoring</Heading>
-        
-        <FormControl mb={4}>
-          <FormLabel>Points Per Hit</FormLabel>
-          <NumberInput
-            value={pointsPerHit}
-            onChange={(_, value) => setPointsPerHit(value)}
-            min={1}
-          >
-            <NumberInputField />
-            <NumberInputStepper>
-              <NumberIncrementStepper />
-              <NumberDecrementStepper />
-            </NumberInputStepper>
-          </NumberInput>
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Penalty Points</FormLabel>
-          <NumberInput
-            value={penaltyPoints}
-            onChange={(_, value) => setPenaltyPoints(value)}
-            min={0}
-          >
-            <NumberInputField />
-            <NumberInputStepper>
-              <NumberIncrementStepper />
-              <NumberDecrementStepper />
-            </NumberInputStepper>
-          </NumberInput>
-          <FormHelperText>Points deducted for missing a correct word</FormHelperText>
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Bonus Points</FormLabel>
-          <NumberInput
-            value={bonusPoints}
-            onChange={(_, value) => setBonusPoints(value)}
-            min={0}
-          >
-            <NumberInputField />
-            <NumberInputStepper>
-              <NumberIncrementStepper />
-              <NumberDecrementStepper />
-            </NumberInputStepper>
-          </NumberInput>
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Bonus Threshold</FormLabel>
-          <NumberInput
-            value={bonusThreshold}
-            onChange={(_, value) => setBonusThreshold(value)}
-            min={1}
-          >
-            <NumberInputField />
-            <NumberInputStepper>
-              <NumberIncrementStepper />
-              <NumberDecrementStepper />
-            </NumberInputStepper>
-          </NumberInput>
-          <FormHelperText>Number of consecutive correct hits needed to trigger bonus points</FormHelperText>
-        </FormControl>
-      </Box>
-
-      <Box>
-        <Heading size="md" mb={4}>Word Categories</Heading>
-        <Text mb={4}>
-          Add categories of words that will appear on moles during the game.
-        </Text>
-        
-        {wordCategories.map((category, index) => (
-          <Box key={index} p={4} borderWidth="1px" borderRadius="md" mb={4}>
-            <FormControl mb={4}>
-              <FormLabel>Category {index + 1} Title</FormLabel>
-              <Input
-                value={category.title}
-                onChange={(e) => handleCategoryTitleChange(index, e.target.value)}
-                placeholder="Category title"
-              />
-            </FormControl>
-            <FormControl mb={4}>
-              <FormLabel>Words (comma-separated)</FormLabel>
-              <Textarea
-                value={category.words.join(', ')}
-                onChange={(e) => handleCategoryWordsChange(index, e.target.value)}
-                placeholder="word1, word2, word3"
-                rows={3}
-              />
-              <FormHelperText>
-                Enter words separated by commas. These will appear on moles in the game.
-              </FormHelperText>
-            </FormControl>
-            
-            {wordCategories.length > 1 && (
-              <Button 
-                size="sm" 
-                colorScheme="red" 
-                onClick={() => handleRemoveCategory(index)}
-              >
-                Remove Category
-              </Button>
+    <EditorSelectionContext.Provider value={{
+      activeEditorId,
+      setActiveEditorId,
+      lastSelectionPath,
+      setLastSelectionPath
+    }}>
+      <VStack spacing={6} align="stretch">
+        <Box>
+          <Heading size="md" mb={4}>Game Settings</Heading>
+          
+          <FormControl mb={4}>
+            <FormLabel>Word Category Template</FormLabel>
+            {loadingTemplates ? (
+              <HStack>
+                <Spinner size="sm" />
+                <Text>Loading templates...</Text>
+              </HStack>
+            ) : (
+              <>
+                <Select
+                  value={gameCategory}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
+                  placeholder="Select a word category (optional)"
+                >
+                  {Object.entries(dbTemplates).map(([key, template]) => (
+                    <option key={key} value={key}>
+                      {template.title}
+                    </option>
+                  ))}
+                </Select>
+                <FormHelperText>
+                  Select a preset word category to quickly populate your game
+                </FormHelperText>
+              </>
             )}
-          </Box>
-        ))}
-        
-        <Button colorScheme="blue" onClick={handleAddCategory} mb={4}>
-          Add Category
-        </Button>
-      </Box>
+          </FormControl>
 
-      <Box>
-        <Heading size="md" mb={4}>Templates</Heading>
-        <FormControl mb={4}>
-          <Button 
-            colorScheme="teal" 
-            size="md" 
-            onClick={handleSaveAsTemplate}
-            isDisabled={!currentUser || wordCategories.length === 0 || (wordCategories[0]?.words.length || 0) === 0}
-            mb={2}
-            width="100%"
-          >
-            Save as Word Template
+          <FormControl mb={4}>
+            <FormLabel>Configuration Title</FormLabel>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Enter a title for this game"
+            />
+          </FormControl>
+
+          <FormControl mb={4}>
+            <FormLabel>Game Time (seconds)</FormLabel>
+            <NumberInput
+              value={gameTime}
+              onChange={(_, value) => setGameTime(value)}
+              min={30}
+              max={300}
+            >
+              <NumberInputField />
+              <NumberInputStepper>
+                <NumberIncrementStepper />
+                <NumberDecrementStepper />
+              </NumberInputStepper>
+            </NumberInput>
+          </FormControl>
+
+          <FormControl mb={4}>
+            <FormLabel>Game Speed</FormLabel>
+            <Select
+              value={gameSpeed}
+              onChange={(e) => setGameSpeed(Number(e.target.value))}
+            >
+              <option value={1}>Slow (10-12 moles)</option>
+              <option value={2}>Medium (14-16 moles)</option>
+              <option value={3}>Fast (17-19 moles)</option>
+            </Select>
+            <FormHelperText>Controls how frequently moles appear during the game</FormHelperText>
+          </FormControl>
+
+          <FormControl mb={4}>
+            <FormLabel>Game Instructions</FormLabel>
+            <Textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="Enter custom instructions for players"
+              rows={3}
+            />
+            <FormHelperText>
+              Custom instructions to show on the game start screen. If left empty, default instructions will be shown.
+            </FormHelperText>
+          </FormControl>
+        </Box>
+
+        <Box>
+          <Heading size="md" mb={4}>Scoring</Heading>
+          
+          <FormControl mb={4}>
+            <FormLabel>Points Per Hit</FormLabel>
+            <NumberInput
+              value={pointsPerHit}
+              onChange={(_, value) => setPointsPerHit(value)}
+              min={1}
+            >
+              <NumberInputField />
+              <NumberInputStepper>
+                <NumberIncrementStepper />
+                <NumberDecrementStepper />
+              </NumberInputStepper>
+            </NumberInput>
+          </FormControl>
+
+          <FormControl mb={4}>
+            <FormLabel>Penalty Points</FormLabel>
+            <NumberInput
+              value={penaltyPoints}
+              onChange={(_, value) => setPenaltyPoints(value)}
+              min={0}
+            >
+              <NumberInputField />
+              <NumberInputStepper>
+                <NumberIncrementStepper />
+                <NumberDecrementStepper />
+              </NumberInputStepper>
+            </NumberInput>
+            <FormHelperText>Points deducted for missing a correct word</FormHelperText>
+          </FormControl>
+
+          <FormControl mb={4}>
+            <FormLabel>Bonus Points</FormLabel>
+            <NumberInput
+              value={bonusPoints}
+              onChange={(_, value) => setBonusPoints(value)}
+              min={0}
+            >
+              <NumberInputField />
+              <NumberInputStepper>
+                <NumberIncrementStepper />
+                <NumberDecrementStepper />
+              </NumberInputStepper>
+            </NumberInput>
+          </FormControl>
+
+          <FormControl mb={4}>
+            <FormLabel>Bonus Threshold</FormLabel>
+            <NumberInput
+              value={bonusThreshold}
+              onChange={(_, value) => setBonusThreshold(value)}
+              min={1}
+            >
+              <NumberInputField />
+              <NumberInputStepper>
+                <NumberIncrementStepper />
+                <NumberDecrementStepper />
+              </NumberInputStepper>
+            </NumberInput>
+            <FormHelperText>Number of consecutive correct hits needed to trigger bonus points</FormHelperText>
+          </FormControl>
+        </Box>
+
+        <Box>
+          <Heading size="md" mb={4}>Word Categories</Heading>
+          <Text mb={4}>
+            Add categories of words that will appear on moles during the game.
+          </Text>
+          
+          {categories.map((category, categoryIndex) => (
+            <Box key={category.id || categoryIndex} p={4} borderWidth="1px" borderRadius="md" mb={4}>
+              <FormControl mb={4}>
+                <FormLabel>Category {categoryIndex + 1} Title</FormLabel>
+                <Input
+                  value={category.title}
+                  onChange={(e) => handleCategoryTitleChange(categoryIndex, e.target.value)}
+                  placeholder="Category title"
+                />
+              </FormControl>
+              
+              <Box mb={4}>
+                <FormLabel>Items</FormLabel>
+                <Text fontSize="sm" color="gray.600" mb={3}>
+                  Enter items to be displayed on moles that players will hit. (Minimum 1 Item)
+                </Text>
+                
+                {category.items.map((item, itemIndex) => (
+                  <Box 
+                    key={item.id || `item-${categoryIndex}-${itemIndex}`}
+                    mb={3}
+                    p={2}
+                    borderWidth="1px"
+                    borderRadius="md"
+                    borderColor="gray.200"
+                  >
+                    <Flex align="center">
+                      <Box flexGrow={1} mr={2}>
+                        <MemoizedItemEditor
+                          value={item.content}
+                          onChange={(content) => handleItemContentChange(categoryIndex, itemIndex, content)}
+                          onFocus={handleEditorFocus(item.id)}
+                          placeholder={`Enter word ${itemIndex + 1}`}
+                          label={`${itemIndex + 1}.`}
+                          editorId={item.id}
+                        />
+                      </Box>
+                      <Flex direction="column" ml={2}>
+                        <IconButton
+                          icon={<ChevronUpIcon />}
+                          aria-label="Move item up"
+                          size="sm"
+                          isDisabled={itemIndex === 0}
+                          onClick={() => handleMoveItemUp(categoryIndex, itemIndex)}
+                          mb={1}
+                        />
+                        <IconButton
+                          icon={<ChevronDownIcon />}
+                          aria-label="Move item down"
+                          size="sm"
+                          isDisabled={itemIndex === category.items.length - 1}
+                          onClick={() => handleMoveItemDown(categoryIndex, itemIndex)}
+                          mb={1}
+                        />
+                        <IconButton
+                          icon={<DeleteIcon />}
+                          aria-label="Delete item"
+                          size="sm"
+                          colorScheme="red"
+                          isDisabled={category.items.length <= 1}
+                          onClick={() => handleDeleteItem(categoryIndex, itemIndex)}
+                        />
+                      </Flex>
+                    </Flex>
+                  </Box>
+                ))}
+                
+                <Button
+                  leftIcon={<AddIcon />}
+                  onClick={() => handleAddItem(categoryIndex)}
+                  size="sm"
+                  mt={2}
+                >
+                  Add Item
+                </Button>
+              </Box>
+              
+              {categories.length > 1 && (
+                <Button 
+                  size="sm" 
+                  colorScheme="red" 
+                  onClick={() => handleRemoveCategory(categoryIndex)}
+                >
+                  Remove Category
+                </Button>
+              )}
+            </Box>
+          ))}
+          
+          <Button colorScheme="blue" onClick={handleAddCategory} mb={4}>
+            Add Category
           </Button>
-          <FormHelperText>
-            Save your current word category as a reusable template for future games
-          </FormHelperText>
-        </FormControl>
-      </Box>
+        </Box>
 
-      <Box>
-        <Heading size="md" mb={4}>Sharing</Heading>
-        <FormControl display="flex" alignItems="center" mb={4}>
-          <FormLabel mb="0">Share Configuration</FormLabel>
-          <Switch
-            isChecked={shareConfig}
-            onChange={(e) => setShareConfig(e.target.checked)}
-          />
-          <FormHelperText ml={2}>
-            When enabled, other users can see and use this configuration
-          </FormHelperText>
-        </FormControl>
-      </Box>
+        <Box>
+          <Heading size="md" mb={4}>Templates</Heading>
+          <FormControl mb={4}>
+            <Button 
+              colorScheme="teal" 
+              size="md" 
+              onClick={handleSaveAsTemplate}
+              isDisabled={!currentUser || categories.length === 0 || (categories[0]?.items.length || 0) === 0}
+              mb={2}
+              width="100%"
+            >
+              Save as Word Template
+            </Button>
+            <FormHelperText>
+              Save your current word category as a reusable template for future games
+            </FormHelperText>
+          </FormControl>
+        </Box>
 
-      <Divider my={4} />
-      
-      <Button 
-        colorScheme="green" 
-        size="lg" 
-        onClick={handleSaveConfig} 
-        isLoading={isLoading}
-        loadingText="Saving..."
-      >
-        {isEditing ? "Update Configuration" : "Save Configuration"}
-      </Button>
-    </VStack>
+        <Box>
+          <Heading size="md" mb={4}>Sharing</Heading>
+          <FormControl display="flex" alignItems="center" mb={4}>
+            <FormLabel mb="0">Share Configuration</FormLabel>
+            <Switch
+              isChecked={shareConfig}
+              onChange={(e) => setShareConfig(e.target.checked)}
+            />
+            <FormHelperText ml={2}>
+              When enabled, other users can see and use this configuration
+            </FormHelperText>
+          </FormControl>
+        </Box>
+
+        <Divider my={4} />
+        
+        <Button 
+          colorScheme="green" 
+          size="lg" 
+          onClick={handleSaveConfig} 
+          isLoading={isLoading}
+          loadingText="Saving..."
+        >
+          {isEditing ? "Update Configuration" : "Save Configuration"}
+        </Button>
+      </VStack>
+    </EditorSelectionContext.Provider>
   );
 };
 
