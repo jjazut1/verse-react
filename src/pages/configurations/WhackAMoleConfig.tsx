@@ -342,6 +342,8 @@ const WhackAMoleConfig = () => {
         
         querySnapshot.forEach((doc) => {
           const data = doc.data();
+          console.log(`Loading template ${doc.id}:`, data); // Log the raw data
+          
           templates[doc.id] = {
             title: data.title || 'Untitled Template',
             words: Array.isArray(data.words) ? data.words : [],
@@ -354,6 +356,8 @@ const WhackAMoleConfig = () => {
             instructions: data.instructions,
             share: data.share
           };
+          
+          console.log(`Processed template ${doc.id}:`, templates[doc.id]); // Log the processed template
         });
         
         // If we found templates in the database, use those
@@ -569,14 +573,40 @@ const WhackAMoleConfig = () => {
         if (templateData.instructions) setInstructions(templateData.instructions);
         if (templateData.share !== undefined) setShareConfig(templateData.share);
         
+        // Create a new category with the template words
+        const newCategory: Category = {
+          id: generateId(),
+          title: templateData.title,
+          items: []
+        };
+
+        // Check if words array exists and has items
+        if (templateData.words && Array.isArray(templateData.words) && templateData.words.length > 0) {
+          // Create rich text items from each word
+          newCategory.items = templateData.words.map(word => ({
+            id: generateId(),
+            content: [{ type: 'paragraph', children: [{ text: word }] }]
+          }));
+        } else {
+          // Add a default empty item if no words are provided
+          newCategory.items = [{
+            id: generateId(),
+            content: [{ type: 'paragraph', children: [{ text: '' }] }]
+          }];
+        }
+        
         // Update the first category or add if none exist
         if (categories.length === 0) {
-          setCategories([convertWordCategoryToCategory(templateData)]);
+          setCategories([newCategory]);
         } else {
           const newCategories = [...categories];
-          newCategories[0] = convertWordCategoryToCategory(templateData);
+          newCategories[0] = newCategory;
           setCategories(newCategories);
         }
+        
+        // Log for debugging
+        console.log("Applied template:", templateData);
+        console.log("Created category:", newCategory);
       }
     }
   };
