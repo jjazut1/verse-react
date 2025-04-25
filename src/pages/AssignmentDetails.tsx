@@ -7,8 +7,8 @@ import { Assignment } from '../types';
 import { Timestamp } from 'firebase/firestore';
 
 // Game components (import as needed)
-import SortCategoriesEggRevealAdapter from '../components/games/sort-categories-egg-reveal/Adapter';
-import WhackAMole from '../components/games/whack-a-mole/WhackAMole';
+import SortCategoriesEggRevealAdapter from '../components/games/sort-categories-egg-reveal/SortCategoriesEggRevealAdapter';
+import WhackAMoleAdapter from '../components/games/whack-a-mole/WhackAMoleAdapter';
 
 const AssignmentDetails: React.FC = () => {
   const { token } = useParams<{ token: string }>();
@@ -147,15 +147,15 @@ const AssignmentDetails: React.FC = () => {
         return (
           <SortCategoriesEggRevealAdapter
             config={gameConfig}
-            onComplete={handleGameComplete}
+            onGameComplete={handleGameComplete}
             playerName={studentName}
           />
         );
       case 'whack-a-mole':
         return (
-          <WhackAMole
+          <WhackAMoleAdapter
             config={gameConfig}
-            onComplete={handleGameComplete}
+            onGameComplete={handleGameComplete}
             playerName={studentName}
           />
         );
