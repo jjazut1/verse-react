@@ -33,6 +33,7 @@ import { serverTimestamp } from 'firebase/firestore';
 import { useUnsavedChangesContext } from '../../contexts/UnsavedChangesContext';
 import SlateEditor from '../../components/SlateEditor';
 import { isEqual } from 'lodash';
+import TemplateSync from '../../components/TemplateSync';
 
 // Create context for editor selection
 interface EditorSelectionContextType {
@@ -151,7 +152,7 @@ const convertCategoryToWordCategory = (category: Category): WordCategory => {
         
         traverse(Array.isArray(item.content) ? item.content : []);
         return text.trim();
-      } catch (e) {
+    } catch (e) {
         console.error('Error extracting text from rich content:', e);
         return '';
       }
@@ -279,7 +280,7 @@ const WhackAMoleConfig = () => {
   const { currentUser } = useAuth();
   const { onError } = useOutletContext<OutletContextType>();
   const { setHasUnsavedChanges } = useUnsavedChangesContext();
-  
+
   // Editor selection state
   const [activeEditorId, setActiveEditorId] = useState<string | null>(null);
   const [lastSelectionPath, setLastSelectionPath] = useState<[number, number] | null>(null);
@@ -952,7 +953,7 @@ const WhackAMoleConfig = () => {
         shareConfig,
         categories: JSON.parse(JSON.stringify(categories))
       };
-      
+
       // Navigate to the game with the new/updated configuration
       navigate(`/game/${configId}`);
     } catch (error) {
@@ -970,53 +971,53 @@ const WhackAMoleConfig = () => {
 
   return (
     <EditorSelectionContext.Provider value={{
-      activeEditorId,
-      setActiveEditorId,
-      lastSelectionPath,
-      setLastSelectionPath
+        activeEditorId,
+        setActiveEditorId,
+        lastSelectionPath,
+        setLastSelectionPath
     }}>
       <VStack spacing={6} align="stretch">
         <Box>
           <Heading size="md" mb={4}>Game Settings</Heading>
-          
-          <FormControl mb={4}>
-            <FormLabel>Word Category Template</FormLabel>
-            {loadingTemplates ? (
-              <HStack>
-                <Spinner size="sm" />
-                <Text>Loading templates...</Text>
-              </HStack>
-            ) : (
-              <>
-                <Select
-                  value={gameCategory}
-                  onChange={(e) => handleCategoryChange(e.target.value)}
-                  placeholder="Select a word category (optional)"
-                >
-                  {Object.entries(dbTemplates).map(([key, template]) => (
-                    <option key={key} value={key}>
-                      {template.title}
-                    </option>
-                  ))}
-                </Select>
-                <FormHelperText>
-                  Select a preset word category to quickly populate your game
-                </FormHelperText>
-              </>
-            )}
-          </FormControl>
+        
+        <FormControl mb={4}>
+          <FormLabel>Word Category Template</FormLabel>
+          {loadingTemplates ? (
+            <HStack>
+              <Spinner size="sm" />
+              <Text>Loading templates...</Text>
+            </HStack>
+          ) : (
+            <>
+              <Select
+                value={gameCategory}
+                onChange={(e) => handleCategoryChange(e.target.value)}
+                placeholder="Select a word category (optional)"
+              >
+                {Object.entries(dbTemplates).map(([key, template]) => (
+                  <option key={key} value={key}>
+                    {template.title}
+                  </option>
+                ))}
+              </Select>
+              <FormHelperText>
+                Select a preset word category to quickly populate your game
+              </FormHelperText>
+            </>
+          )}
+        </FormControl>
 
-          <FormControl mb={4}>
-            <FormLabel>Configuration Title</FormLabel>
+        <FormControl mb={4}>
+          <FormLabel>Configuration Title</FormLabel>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Enter a title for this game"
             />
-          </FormControl>
+        </FormControl>
 
-          <FormControl mb={4}>
-            <FormLabel>Game Time (seconds)</FormLabel>
+        <FormControl mb={4}>
+          <FormLabel>Game Time (seconds)</FormLabel>
             <NumberInput
               value={gameTime}
               onChange={(_, value) => setGameTime(value)}
@@ -1029,23 +1030,23 @@ const WhackAMoleConfig = () => {
                 <NumberDecrementStepper />
               </NumberInputStepper>
             </NumberInput>
-          </FormControl>
+        </FormControl>
 
-          <FormControl mb={4}>
-            <FormLabel>Game Speed</FormLabel>
-            <Select
+        <FormControl mb={4}>
+          <FormLabel>Game Speed</FormLabel>
+          <Select
               value={gameSpeed}
-              onChange={(e) => setGameSpeed(Number(e.target.value))}
+            onChange={(e) => setGameSpeed(Number(e.target.value))}
             >
               <option value={1}>Slow (10-12 moles)</option>
               <option value={2}>Medium (14-16 moles)</option>
               <option value={3}>Fast (17-19 moles)</option>
-            </Select>
-            <FormHelperText>Controls how frequently moles appear during the game</FormHelperText>
-          </FormControl>
+          </Select>
+          <FormHelperText>Controls how frequently moles appear during the game</FormHelperText>
+        </FormControl>
 
-          <FormControl mb={4}>
-            <FormLabel>Game Instructions</FormLabel>
+        <FormControl mb={4}>
+          <FormLabel>Game Instructions</FormLabel>
             <Textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
@@ -1055,14 +1056,14 @@ const WhackAMoleConfig = () => {
             <FormHelperText>
               Custom instructions to show on the game start screen. If left empty, default instructions will be shown.
             </FormHelperText>
-          </FormControl>
-        </Box>
+        </FormControl>
+      </Box>
 
         <Box>
           <Heading size="md" mb={4}>Scoring</Heading>
-          
-          <FormControl mb={4}>
-            <FormLabel>Points Per Hit</FormLabel>
+        
+        <FormControl mb={4}>
+          <FormLabel>Points Per Hit</FormLabel>
             <NumberInput
               value={pointsPerHit}
               onChange={(_, value) => setPointsPerHit(value)}
@@ -1074,10 +1075,10 @@ const WhackAMoleConfig = () => {
                 <NumberDecrementStepper />
               </NumberInputStepper>
             </NumberInput>
-          </FormControl>
+        </FormControl>
 
-          <FormControl mb={4}>
-            <FormLabel>Penalty Points</FormLabel>
+        <FormControl mb={4}>
+          <FormLabel>Penalty Points</FormLabel>
             <NumberInput
               value={penaltyPoints}
               onChange={(_, value) => setPenaltyPoints(value)}
@@ -1090,10 +1091,10 @@ const WhackAMoleConfig = () => {
               </NumberInputStepper>
             </NumberInput>
             <FormHelperText>Points deducted for missing a correct word</FormHelperText>
-          </FormControl>
+        </FormControl>
 
-          <FormControl mb={4}>
-            <FormLabel>Bonus Points</FormLabel>
+        <FormControl mb={4}>
+          <FormLabel>Bonus Points</FormLabel>
             <NumberInput
               value={bonusPoints}
               onChange={(_, value) => setBonusPoints(value)}
@@ -1105,10 +1106,10 @@ const WhackAMoleConfig = () => {
                 <NumberDecrementStepper />
               </NumberInputStepper>
             </NumberInput>
-          </FormControl>
+        </FormControl>
 
-          <FormControl mb={4}>
-            <FormLabel>Bonus Threshold</FormLabel>
+        <FormControl mb={4}>
+          <FormLabel>Bonus Threshold</FormLabel>
             <NumberInput
               value={bonusThreshold}
               onChange={(_, value) => setBonusThreshold(value)}
@@ -1120,26 +1121,26 @@ const WhackAMoleConfig = () => {
                 <NumberDecrementStepper />
               </NumberInputStepper>
             </NumberInput>
-            <FormHelperText>Number of consecutive correct hits needed to trigger bonus points</FormHelperText>
-          </FormControl>
-        </Box>
+          <FormHelperText>Number of consecutive correct hits needed to trigger bonus points</FormHelperText>
+        </FormControl>
+      </Box>
 
         <Box>
           <Heading size="md" mb={4}>Word Categories</Heading>
-          <Text mb={4}>
-            Add categories of words that will appear on moles during the game.
-          </Text>
-          
+        <Text mb={4}>
+          Add categories of words that will appear on moles during the game.
+        </Text>
+        
           {categories.map((category, categoryIndex) => (
             <Box key={category.id || categoryIndex} p={4} borderWidth="1px" borderRadius="md" mb={4}>
-              <FormControl mb={4}>
+            <FormControl mb={4}>
                 <FormLabel>Category {categoryIndex + 1} Title</FormLabel>
                 <Input
                   value={category.title}
                   onChange={(e) => handleCategoryTitleChange(categoryIndex, e.target.value)}
                   placeholder="Category title"
                 />
-              </FormControl>
+            </FormControl>
               
               <Box mb={4}>
                 <FormLabel>Items</FormLabel>
@@ -1208,67 +1209,96 @@ const WhackAMoleConfig = () => {
               </Box>
               
               {categories.length > 1 && (
-                <Button 
-                  size="sm" 
-                  colorScheme="red" 
+              <Button 
+                size="sm" 
+                colorScheme="red" 
                   onClick={() => handleRemoveCategory(categoryIndex)}
-                >
-                  Remove Category
-                </Button>
-              )}
-            </Box>
-          ))}
-          
+              >
+                Remove Category
+              </Button>
+            )}
+          </Box>
+        ))}
+        
           <Button colorScheme="blue" onClick={handleAddCategory} mb={4}>
-            Add Category
-          </Button>
-        </Box>
+          Add Category
+        </Button>
+      </Box>
 
         <Box>
           <Heading size="md" mb={4}>Templates</Heading>
-          <FormControl mb={4}>
-            <Button 
-              colorScheme="teal" 
-              size="md" 
-              onClick={handleSaveAsTemplate}
+        <FormControl mb={4}>
+          <Button 
+            colorScheme="teal" 
+            size="md" 
+            onClick={handleSaveAsTemplate}
               isDisabled={!currentUser || categories.length === 0 || (categories[0]?.items.length || 0) === 0}
-              mb={2}
-              width="100%"
-            >
-              Save as Word Template
-            </Button>
-            <FormHelperText>
-              Save your current word category as a reusable template for future games
-            </FormHelperText>
-          </FormControl>
-        </Box>
+            mb={2}
+            width="100%"
+          >
+            Save as Word Template
+          </Button>
+          <FormHelperText>
+            Save your current word category as a reusable template for future games
+          </FormHelperText>
+        </FormControl>
+      </Box>
 
         <Box>
           <Heading size="md" mb={4}>Sharing</Heading>
-          <FormControl display="flex" alignItems="center" mb={4}>
-            <FormLabel mb="0">Share Configuration</FormLabel>
-            <Switch
-              isChecked={shareConfig}
+        <FormControl display="flex" alignItems="center" mb={4}>
+          <FormLabel mb="0">Share Configuration</FormLabel>
+          <Switch
+            isChecked={shareConfig}
               onChange={(e) => setShareConfig(e.target.checked)}
-            />
-            <FormHelperText ml={2}>
-              When enabled, other users can see and use this configuration
-            </FormHelperText>
-          </FormControl>
-        </Box>
+          />
+          <FormHelperText ml={2}>
+            When enabled, other users can see and use this configuration
+          </FormHelperText>
+        </FormControl>
+      </Box>
 
-        <Divider my={4} />
-        
-        <Button 
-          colorScheme="green" 
-          size="lg" 
-          onClick={handleSaveConfig} 
-          isLoading={isLoading}
-          loadingText="Saving..."
-        >
-          {isEditing ? "Update Configuration" : "Save Configuration"}
-        </Button>
-      </VStack>
+      <Divider my={4} />
+      
+      <Button 
+        colorScheme="green" 
+        size="lg" 
+        onClick={handleSaveConfig} 
+        isLoading={isLoading}
+        loadingText="Saving..."
+      >
+        {isEditing ? "Update Configuration" : "Save Configuration"}
+      </Button>
+
+      {/* Developer Utility Section - only visible in development */}
+      {import.meta.env.DEV && (
+        <Box mt={8} p={4} borderWidth="1px" borderRadius="md" borderColor="gray.300">
+          <Heading size="md" mb={4}>Developer Utilities</Heading>
+          <Text mb={4} color="gray.600">
+            These tools are only available in development mode and are used for debugging and fixing database issues.
+          </Text>
+          
+          <Heading size="sm" mb={2}>Sync Template With Game Config</Heading>
+          <Text mb={4} fontSize="sm" color="gray.600">
+            This utility will copy settings from a userGameConfig to a categoryTemplate with the same name.
+          </Text>
+          
+          {/* Sync the currently loaded template */}
+          {templateId && (
+            <TemplateSync 
+              templateId={templateId}
+              gameTitle={title} 
+            />
+          )}
+          
+          {/* Sync specific templates */}
+          <TemplateSync 
+            templateId="pn24sw2vaDmdGjzcbkCb" 
+            gameTitle="short a v5" 
+          />
+        </Box>
+      )}
+    </VStack>
     </EditorSelectionContext.Provider>
   );
 };
