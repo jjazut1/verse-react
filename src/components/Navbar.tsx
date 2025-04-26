@@ -4,11 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUnsavedChangesContext } from '../contexts/UnsavedChangesContext';
 
 const Navbar = () => {
-  const { currentUser, userProfile, isTeacher, logout } = useAuth();
+  const { currentUser, isTeacher, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { hasUnsavedChanges, promptBeforeLeaving } = useUnsavedChangesContext();
-  const isAdmin = userProfile?.role === 'admin';
+  const isAdmin = false; // Since userProfile is not available, default to false or determine admin status another way
   
   const navLinkStyle = (path: string) => ({
     color: 'white',
@@ -76,15 +76,6 @@ const Navbar = () => {
             onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
           >
             Home
-          </RouterLink>
-          <RouterLink 
-            to="/games" 
-            style={navLinkStyle('/games')}
-            onClick={(e) => handleNavClick(e, '/games')}
-            onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
-            onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-          >
-            Games
           </RouterLink>
           {isTeacher && (
             <>
