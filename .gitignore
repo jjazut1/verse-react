@@ -29,9 +29,11 @@ dist-ssr
 .env.local
 .env.development.local
 .env.test.local
-.env.production.local
+# We need to keep production env for Vercel deployment
+#.env.production.local
 
 # Backup files
 *.bak
 *.bak?
 *.backup
+.vercel
