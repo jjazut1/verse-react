@@ -17,6 +17,7 @@ import {
   FormLabel,
   Input,
   FormHelperText,
+  Center
 } from '@chakra-ui/react';
 import { collection, addDoc, getDocs, query, where, orderBy, limit, serverTimestamp, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
@@ -54,10 +55,13 @@ const WhackAMole: React.FC<WhackAMoleProps> = ({
   const [showHighScoreModal, setShowHighScoreModal] = useState(false);
   const [newHighScoreName, setNewHighScoreName] = useState(playerName || "");
   const [isSubmittingScore, setIsSubmittingScore] = useState(false);
+  const [countdown, setCountdown] = useState(0); // Countdown timer state
+  const [showCountdown, setShowCountdown] = useState(false); // Whether to show countdown UI
 
   const toast = useToast();
   const sceneRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout>();
+  const countdownTimerRef = useRef<NodeJS.Timeout>(); // Ref for countdown timer
 
   // Load high scores
   useEffect(() => {
@@ -109,6 +113,25 @@ const WhackAMole: React.FC<WhackAMoleProps> = ({
     }
   }, [gameStarted, timeLeft]);
 
+  // Countdown timer effect
+  useEffect(() => {
+    if (showCountdown && countdown > 0) {
+      countdownTimerRef.current = setTimeout(() => {
+        setCountdown(prev => prev - 1);
+      }, 1000);
+      
+      return () => {
+        if (countdownTimerRef.current) {
+          clearTimeout(countdownTimerRef.current);
+        }
+      };
+    } else if (showCountdown && countdown === 0) {
+      // When countdown reaches 0, start the actual game
+      setShowCountdown(false);
+      setGameStarted(true);
+    }
+  }, [showCountdown, countdown]);
+
   // Add Comic Neue font from Google Fonts
   useEffect(() => {
     const link = document.createElement('link');
@@ -120,6 +143,15 @@ const WhackAMole: React.FC<WhackAMoleProps> = ({
       document.head.removeChild(link);
     };
   }, []);
+
+  const startCountdown = () => {
+    setScore(0);
+    setTimeLeft(config.gameTime);
+    setGameOver(false);
+    setConsecutiveHits(0);
+    setCountdown(3); // Set initial countdown to 3
+    setShowCountdown(true); // Show countdown UI
+  };
 
   const startGame = () => {
     setScore(0);
@@ -357,8 +389,43 @@ const WhackAMole: React.FC<WhackAMoleProps> = ({
         />
       </Box>
 
+      {/* Countdown Overlay */}
+      {showCountdown && (
+        <Box
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          bg="rgba(0, 0, 0, 0.3)"
+          zIndex={5}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
+          <Center 
+            p={8} 
+            bg="white" 
+            borderRadius="full" 
+            boxShadow="0px 0px 20px rgba(0, 31, 63, 0.4)"
+            w="150px"
+            h="150px"
+          >
+            <Text 
+              fontSize="7xl" 
+              fontWeight="bold" 
+              fontFamily="'Comic Neue', cursive" 
+              color="#001f3f"
+              animation="pulse 1s infinite"
+            >
+              {countdown}
+            </Text>
+          </Center>
+        </Box>
+      )}
+
       {/* Leaderboard - only show if config.share is true and game is not active */}
-      {config.share && !gameStarted && (
+      {config.share && !gameStarted && !showCountdown && (
         <Box
           position="absolute"
           top="70px"
@@ -423,7 +490,7 @@ const WhackAMole: React.FC<WhackAMoleProps> = ({
       )}
 
       {/* Game Controls */}
-      {(!gameStarted || gameOver) && (
+      {(!gameStarted && !showCountdown || gameOver) && (
         <Box
           position="absolute"
           top="50%"
@@ -462,7 +529,7 @@ const WhackAMole: React.FC<WhackAMoleProps> = ({
             <Button
               colorScheme="blue"
               size="lg"
-              onClick={startGame}
+              onClick={startCountdown}
               fontFamily="'Comic Neue', cursive"
               fontWeight="bold"
             >
@@ -515,6 +582,17 @@ const WhackAMole: React.FC<WhackAMoleProps> = ({
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {/* Add pulse animation for countdown */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+          }
+        `
+      }} />
     </Box>
   );
 };
