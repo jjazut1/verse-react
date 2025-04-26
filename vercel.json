@@ -5,8 +5,7 @@
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist",
-        "buildCommand": "cp .env.production .env && npm run build"
+        "distDir": "dist"
       }
     }
   ],
