@@ -1,12 +1,21 @@
 import React, { useState } from 'react';
-import { syncTemplateWithGameConfig } from '../utils/updateTemplates';
+import { 
+  syncTemplateWithGameConfig, 
+  syncWhackAMoleTemplate, 
+  syncSortCategoriesEggTemplate 
+} from '../utils/updateTemplates';
 
 interface TemplateSyncProps {
   templateId: string;
   gameTitle: string;
+  gameType?: 'whack-a-mole' | 'sort-categories-egg';
 }
 
-const TemplateSync: React.FC<TemplateSyncProps> = ({ templateId, gameTitle }) => {
+const TemplateSync: React.FC<TemplateSyncProps> = ({ 
+  templateId, 
+  gameTitle,
+  gameType 
+}) => {
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
@@ -15,7 +24,16 @@ const TemplateSync: React.FC<TemplateSyncProps> = ({ templateId, gameTitle }) =>
       setSyncing(true);
       setResult(null);
       
-      const success = await syncTemplateWithGameConfig(templateId, gameTitle);
+      let success;
+      
+      if (gameType === 'whack-a-mole') {
+        success = await syncWhackAMoleTemplate(templateId, gameTitle);
+      } else if (gameType === 'sort-categories-egg') {
+        success = await syncSortCategoriesEggTemplate(templateId, gameTitle);
+      } else {
+        // Auto-detect based on template data
+        success = await syncTemplateWithGameConfig(templateId, gameTitle);
+      }
       
       if (success) {
         setResult(`Successfully synced template "${gameTitle}"`);
@@ -41,6 +59,7 @@ const TemplateSync: React.FC<TemplateSyncProps> = ({ templateId, gameTitle }) =>
       <p>
         <strong>Template ID:</strong> {templateId}<br />
         <strong>Game Title:</strong> {gameTitle}
+        {gameType && <><br /><strong>Game Type:</strong> {gameType}</>}
       </p>
       
       <button 
