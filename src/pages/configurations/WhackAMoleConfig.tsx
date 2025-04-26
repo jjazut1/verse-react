@@ -59,6 +59,214 @@ const EditorSelectionContext = createContext<EditorSelectionContextType>({
 // Use the editor selection context
 const useEditorSelection = () => useContext(EditorSelectionContext);
 
+// Add Apple-style CSS for styling
+const styles = `
+  /* Global Apple-style design */
+  .apple-container {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  
+  /* Section styling */
+  .apple-section {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 24px;
+    border: 1px solid #E2E8F0;
+    transition: all 0.2s ease;
+  }
+
+  .apple-section:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+  
+  /* Section header */
+  .apple-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #E2E8F0;
+    padding-bottom: 12px;
+  }
+  
+  /* Input fields */
+  .apple-input {
+    border-radius: 8px !important;
+    border-color: #E2E8F0 !important;
+    background-color: #F8F9FC !important;
+    transition: all 0.2s ease !important;
+  }
+  
+  .apple-input:focus-within {
+    border-color: #007AFF !important;
+    box-shadow: 0 0 0 1px #007AFF !important;
+    background-color: white !important;
+  }
+  
+  /* Number input fields */
+  .chakra-numberinput__field {
+    background-color: #F8F9FC !important;
+    border-color: #E2E8F0 !important;
+    border-radius: 8px !important;
+  }
+  
+  .chakra-numberinput__field:focus-within {
+    border-color: #007AFF !important;
+    box-shadow: 0 0 0 1px #007AFF !important;
+    background-color: white !important;
+  }
+  
+  /* Textarea fields */
+  .chakra-textarea {
+    background-color: #F8F9FC !important;
+    border-color: #E2E8F0 !important;
+    border-radius: 8px !important;
+  }
+  
+  .chakra-textarea:focus {
+    border-color: #007AFF !important;
+    box-shadow: 0 0 0 1px #007AFF !important;
+    background-color: white !important;
+  }
+  
+  /* Custom editor styling */
+  .narrow-editor {
+    width: 100%;
+  }
+  
+  .narrow-editor [contenteditable="true"] {
+    padding: 8px 12px;
+    min-height: 38px;
+    line-height: 1.5;
+  }
+  
+  /* Ensure the formatting toolbar aligns with input field */
+  .item-editor-wrapper .slate-toolbar {
+    border-radius: 6px;
+    margin-top: 2px;
+  }
+  
+  /* Buttons */
+  .apple-button {
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+  }
+  
+  .apple-button-primary {
+    background-color: #007AFF !important;
+    color: white !important;
+  }
+  
+  .apple-button-primary:hover {
+    background-color: #0063CC !important;
+    transform: translateY(-1px) !important;
+  }
+  
+  .apple-button-primary:active {
+    transform: translateY(0) scale(0.98) !important;
+  }
+  
+  .apple-button-secondary {
+    background-color: #F1F5F9 !important;
+    color: #1E293B !important;
+    border: 1px solid #E2E8F0 !important;
+  }
+  
+  .apple-button-secondary:hover {
+    background-color: #E2E8F0 !important;
+    transform: translateY(-1px) !important;
+  }
+  
+  .apple-button-secondary:active {
+    transform: translateY(0) scale(0.98) !important;
+  }
+
+  /* Add styling for active category */
+  .category-box {
+    transition: all 0.2s ease;
+    border: 1px solid #E2E8F0;
+  }
+  
+  .category-box:focus-within {
+    border-color: #007AFF;
+    box-shadow: 0 0 0 1px #007AFF;
+    background-color: #F7FAFF;
+  }
+
+  /* Category header styling */
+  .category-header {
+    background-color: #f5f7fa;
+    margin: -16px -16px 16px -16px;
+    padding: 12px 16px;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    border-bottom: 1px solid #E2E8F0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .category-box:focus-within .category-header {
+    background-color: #EBF5FF;
+    border-bottom-color: #C5E0FF;
+  }
+  
+  /* Category order buttons */
+  .order-buttons {
+    display: flex;
+    gap: 4px;
+  }
+
+  /* Switch styling */
+  .chakra-switch__track[data-checked] {
+    background-color: #007AFF !important;
+  }
+  
+  .chakra-switch__track:not([data-checked]) {
+    background-color: #CBD5E0 !important;
+  }
+`;
+
+// Add styles to the document
+const styleElement = document.createElement('style');
+styleElement.textContent = styles;
+document.head.appendChild(styleElement);
+
+// Define apple style icon button
+const appleStyleIconButton = {
+  width: '32px',
+  height: '32px',
+  padding: '0',
+  minWidth: 'auto',
+  borderRadius: '8px',
+  fontWeight: '500',
+  transition: 'all 0.2s ease',
+  color: 'gray.500',
+  _hover: {
+    bg: 'blue.50',
+    color: 'blue.500',
+    transform: 'translateY(-1px)'
+  },
+  _active: {
+    transform: 'scale(0.98)',
+  }
+};
+
+// Define a subtle style for the delete button
+const subtleDeleteButton = {
+  ...appleStyleIconButton,
+  color: 'gray.500',
+  _hover: {
+    bg: 'red.50',
+    color: 'red.500',
+  }
+};
+
 interface WordCategory {
   id?: string;
   title: string;
@@ -277,14 +485,12 @@ const ItemEditor = ({
         width: '100%'
       }}
     >
-      <div style={{ width: '100%', maxWidth: '400px' }}>
-        <SlateEditor
-          value={getEditorValue()}
-          onChange={handleSlateChange}
-          placeholder={placeholder}
-          className="narrow-editor"
-        />
-      </div>
+      <SlateEditor
+        value={getEditorValue()}
+        onChange={handleSlateChange}
+        placeholder={placeholder}
+        className="apple-input narrow-editor"
+      />
     </div>
   );
 };
@@ -1192,8 +1398,10 @@ const WhackAMoleConfig = () => {
         setLastSelectionPath
     }}>
       <VStack spacing={6} align="stretch">
-        <Box>
-          <Heading size="md" mb={4}>Game Settings</Heading>
+        <Box className="apple-section">
+          <div className="apple-section-header">
+            <Heading size="md" mb={0}>Game Settings</Heading>
+          </div>
         
           <SimpleGrid columns={[1, null, 2]} spacing={6}>
         <FormControl mb={4}>
@@ -1209,7 +1417,8 @@ const WhackAMoleConfig = () => {
                 value={gameCategory}
                 onChange={(e) => handleCategoryChange(e.target.value)}
                 placeholder="Select a word category (optional)"
-                    maxW="400px"
+                maxW="400px"
+                className="apple-input"
               >
                 {Object.entries(dbTemplates).map(([key, template]) => (
                   <option key={key} value={key}>
@@ -1231,6 +1440,7 @@ const WhackAMoleConfig = () => {
                   onChange={(e) => setTitle(e.target.value)}
               placeholder="Enter a title for this game"
                   maxW="400px"
+                  className="apple-input"
             />
         </FormControl>
 
@@ -1242,8 +1452,9 @@ const WhackAMoleConfig = () => {
                   min={30}
                   max={300}
                   maxW="200px"
+                  className="apple-input"
                 >
-                  <NumberInputField />
+                  <NumberInputField className="apple-input" />
                   <NumberInputStepper>
                     <NumberIncrementStepper />
                     <NumberDecrementStepper />
@@ -1255,8 +1466,9 @@ const WhackAMoleConfig = () => {
           <FormLabel>Game Speed</FormLabel>
           <Select
                 value={gameSpeed}
-            onChange={(e) => setGameSpeed(Number(e.target.value))}
+                onChange={(e) => setGameSpeed(Number(e.target.value))}
                 maxW="300px"
+                className="apple-input"
               >
                 <option value={1}>Slow (10-12 moles)</option>
                 <option value={2}>Medium (14-16 moles)</option>
@@ -1271,9 +1483,10 @@ const WhackAMoleConfig = () => {
               <Textarea
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Enter custom instructions for players"
+                placeholder="Enter custom instructions for players"
                 rows={3}
                 maxW="800px"
+                className="apple-input"
             />
             <FormHelperText>
               Custom instructions to show on the game start screen. If left empty, default instructions will be shown.
@@ -1281,8 +1494,10 @@ const WhackAMoleConfig = () => {
         </FormControl>
       </Box>
 
-        <Box>
-          <Heading size="md" mb={4}>Scoring</Heading>
+        <Box className="apple-section">
+          <div className="apple-section-header">
+            <Heading size="md" mb={0}>Scoring</Heading>
+          </div>
         
           <SimpleGrid columns={[1, null, 2]} spacing={6}>
         <FormControl mb={4}>
@@ -1292,8 +1507,9 @@ const WhackAMoleConfig = () => {
                   onChange={(_, value) => setPointsPerHit(value)}
                   min={1}
                   maxW="200px"
+                  className="apple-input"
                 >
-                  <NumberInputField />
+                  <NumberInputField className="apple-input" />
                   <NumberInputStepper>
                     <NumberIncrementStepper />
                     <NumberDecrementStepper />
@@ -1308,8 +1524,9 @@ const WhackAMoleConfig = () => {
                   onChange={(_, value) => setPenaltyPoints(value)}
                   min={0}
                   maxW="200px"
+                  className="apple-input"
                 >
-                  <NumberInputField />
+                  <NumberInputField className="apple-input" />
                   <NumberInputStepper>
                     <NumberIncrementStepper />
                     <NumberDecrementStepper />
@@ -1325,8 +1542,9 @@ const WhackAMoleConfig = () => {
                   onChange={(_, value) => setBonusPoints(value)}
                   min={0}
                   maxW="200px"
+                  className="apple-input"
                 >
-                  <NumberInputField />
+                  <NumberInputField className="apple-input" />
                   <NumberInputStepper>
                     <NumberIncrementStepper />
                     <NumberDecrementStepper />
@@ -1341,8 +1559,9 @@ const WhackAMoleConfig = () => {
                   onChange={(_, value) => setBonusThreshold(value)}
                   min={1}
                   maxW="200px"
+                  className="apple-input"
                 >
-                  <NumberInputField />
+                  <NumberInputField className="apple-input" />
                   <NumberInputStepper>
                     <NumberIncrementStepper />
                     <NumberDecrementStepper />
@@ -1353,8 +1572,10 @@ const WhackAMoleConfig = () => {
           </SimpleGrid>
       </Box>
 
-        <Box>
-          <Heading size="md" mb={4}>Word Categories</Heading>
+        <Box className="apple-section">
+          <div className="apple-section-header">
+            <Heading size="md" mb={0}>Word Categories</Heading>
+          </div>
         <Text mb={4}>
           Add categories of words that will appear on moles during the game.
         </Text>
@@ -1362,30 +1583,25 @@ const WhackAMoleConfig = () => {
           {categories.map((category, categoryIndex) => (
             <Box 
               key={category.id || categoryIndex} 
-              p={0} 
+              p={4} 
               borderWidth="1px" 
               borderRadius="md" 
               mb={4}
-              bg="gray.50"
+              className="category-box"
             >
               <Flex 
-                p={4} 
-                justifyContent="space-between" 
-                alignItems="center" 
-                borderBottomWidth={collapsedCategories[category.id] ? '0px' : '1px'}
-                borderBottomColor="gray.200"
-                cursor="pointer"
-                onClick={() => toggleCategoryCollapse(category.id)}
-                bg={collapsedCategories[category.id] ? "gray.100" : "gray.50"}
-                borderTopLeftRadius="md"
-                borderTopRightRadius="md"
+                justify="space-between" 
+                align="center" 
+                mb={3}
+                className="category-header"
               >
-                <Heading size="md">Category {categoryIndex + 1}</Heading>
-                <HStack spacing={2}>
+                <Heading size="sm">Category {categoryIndex + 1}</Heading>
+                <HStack spacing={1} className="order-buttons">
                   <IconButton
-                    icon={<ChevronUpIcon />}
+                    icon={<ChevronUpIcon boxSize={3} />}
                     aria-label="Move category up"
                     size="sm"
+                    variant="ghost"
                     isDisabled={categoryIndex === 0}
                     onClick={(e) => {
                       e.stopPropagation(); // Prevent collapse toggle
@@ -1395,11 +1611,14 @@ const WhackAMoleConfig = () => {
                       newCategories[categoryIndex - 1] = temp;
                       setCategories(newCategories);
                     }}
+                    sx={appleStyleIconButton}
+                    className="apple-button"
                   />
                   <IconButton
-                    icon={<ChevronDownIcon />}
+                    icon={<ChevronDownIcon boxSize={3} />}
                     aria-label="Move category down"
                     size="sm"
+                    variant="ghost"
                     isDisabled={categoryIndex === categories.length - 1}
                     onClick={(e) => {
                       e.stopPropagation(); // Prevent collapse toggle
@@ -1409,11 +1628,36 @@ const WhackAMoleConfig = () => {
                       newCategories[categoryIndex + 1] = temp;
                       setCategories(newCategories);
                     }}
+                    sx={appleStyleIconButton}
+                    className="apple-button"
                   />
-                  {collapsedCategories[category.id] ? 
-                    <ChevronDownIcon boxSize={6} /> : 
-                    <ChevronUpIcon boxSize={6} />
-                  }
+                  {collapsedCategories[category.id] ? (
+                    <IconButton
+                      icon={<ChevronDownIcon boxSize={4} />}
+                      aria-label="Expand category"
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCategoryCollapse(category.id);
+                      }}
+                      sx={appleStyleIconButton}
+                      className="apple-button"
+                    />
+                  ) : (
+                    <IconButton
+                      icon={<ChevronUpIcon boxSize={4} />}
+                      aria-label="Collapse category"
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCategoryCollapse(category.id);
+                      }}
+                      sx={appleStyleIconButton}
+                      className="apple-button"
+                    />
+                  )}
                 </HStack>
               </Flex>
               
@@ -1424,9 +1668,10 @@ const WhackAMoleConfig = () => {
                     <Input
                       value={category.title}
                       onChange={(e) => handleCategoryTitleChange(categoryIndex, e.target.value)}
-                  placeholder="Category title"
+                      placeholder="Category title"
                       maxW="400px"
-                />
+                      className="apple-input"
+                    />
             </FormControl>
               
                   <Box mb={4}>
@@ -1438,19 +1683,23 @@ const WhackAMoleConfig = () => {
                     {category.items.map((item, itemIndex) => (
                       <Box 
                         key={item.id || `item-${categoryIndex}-${itemIndex}`}
-                        mb={3}
+                        mb={2}
                       >
-                        <Flex align="center" maxW="750px">
-                          <Text minW="30px" fontSize="md" mr={2}>{itemIndex + 1}.</Text>
+                        <Flex 
+                          align="center"
+                          direction="row"
+                        >
+                          <Text 
+                            mr={2} 
+                            fontWeight="bold" 
+                            width="25px" 
+                            color="gray.500"
+                          >
+                            {itemIndex + 1}.
+                          </Text>
                           <Box 
-                            flexGrow={1} 
+                            flex="1" 
                             mr={2}
-                            borderWidth="1px"
-                            borderRadius="md"
-                            borderColor="gray.200"
-                            bg="white"
-                            p={2}
-                            maxW="400px"
                           >
                             <MemoizedItemEditor
                               value={item.content}
@@ -1460,59 +1709,76 @@ const WhackAMoleConfig = () => {
                               editorId={item.id}
                             />
                           </Box>
-                          <Flex>
+                          <HStack spacing={1}>
                             <IconButton
-                              icon={<ChevronUpIcon />}
+                              icon={<ChevronUpIcon boxSize={3} />}
                               aria-label="Move item up"
                               size="sm"
+                              variant="ghost"
                               isDisabled={itemIndex === 0}
                               onClick={() => handleMoveItemUp(categoryIndex, itemIndex)}
                               mr={1}
+                              sx={appleStyleIconButton}
+                              className="apple-button"
                             />
                             <IconButton
-                              icon={<ChevronDownIcon />}
+                              icon={<ChevronDownIcon boxSize={3} />}
                               aria-label="Move item down"
                               size="sm"
+                              variant="ghost"
                               isDisabled={itemIndex === category.items.length - 1}
                               onClick={() => handleMoveItemDown(categoryIndex, itemIndex)}
                               mr={1}
+                              sx={appleStyleIconButton}
+                              className="apple-button"
                             />
                             <IconButton
-                              icon={<DeleteIcon />}
+                              icon={<DeleteIcon boxSize={4} />}
                               aria-label="Delete item"
                               size="sm"
-                              colorScheme="red"
+                              variant="ghost"
                               isDisabled={category.items.length <= 1}
                               onClick={() => handleDeleteItem(categoryIndex, itemIndex)}
+                              sx={subtleDeleteButton}
+                              className="apple-button"
                             />
-                          </Flex>
+                          </HStack>
                         </Flex>
                       </Box>
                     ))}
                     
                     <Flex justifyContent="space-between" mt={4} mb={2}>
-              <Button 
+                      <Button 
                         leftIcon={<AddIcon />}
                         onClick={() => handleAddItem(categoryIndex)}
-                size="sm" 
+                        size="sm" 
                         colorScheme="blue"
                         _hover={{ bg: 'blue.600' }}
+                        className="apple-button apple-button-primary"
                       >
                         Add Item
                       </Button>
                       
                       {categories.length > 1 && (
                         <Button 
-                colorScheme="red" 
-                          onClick={() => handleRemoveCategory(categoryIndex)}
-                          size="sm"
+                          size="sm" 
                           variant="outline"
-                          borderRadius="md"
-                          _hover={{ bg: 'red.50' }}
-              >
-                Remove Category
-              </Button>
-            )}
+                          colorScheme="gray"
+                          onClick={() => handleRemoveCategory(categoryIndex)}
+                          className="apple-button"
+                          sx={{
+                            color: 'gray.500',
+                            borderColor: 'gray.200',
+                            _hover: {
+                              bg: 'red.50',
+                              color: 'red.500',
+                              borderColor: 'red.100'
+                            }
+                          }}
+                        >
+                          Remove Category
+                        </Button>
+                      )}
                     </Flex>
                   </Box>
                 </Box>
@@ -1521,18 +1787,19 @@ const WhackAMoleConfig = () => {
         ))}
         
           <Flex justify="space-between" mb={4}>
-          <Button 
-            colorScheme="blue" 
-            onClick={handleAddCategory} 
-            leftIcon={<AddIcon />}
+            <Button 
+              colorScheme="blue" 
+              onClick={handleAddCategory} 
+              leftIcon={<AddIcon />}
               size="md"
               borderRadius="md"
               bg="blue.500"
               _hover={{ bg: 'blue.600' }}
               width="auto"
-          >
-          Add Category
-        </Button>
+              className="apple-button apple-button-primary"
+            >
+            Add Category
+          </Button>
             
             {categories.length > 1 && categories.some(cat => !collapsedCategories[cat.id]) && (
               <Button
@@ -1570,8 +1837,10 @@ const WhackAMoleConfig = () => {
           </Flex>
       </Box>
 
-        <Box>
-          <Heading size="md" mb={4}>Templates</Heading>
+        <Box className="apple-section">
+          <div className="apple-section-header">
+            <Heading size="md" mb={0}>Templates</Heading>
+          </div>
         <FormControl mb={4}>
           <Button 
             colorScheme="teal" 
@@ -1589,13 +1858,16 @@ const WhackAMoleConfig = () => {
         </FormControl>
       </Box>
 
-        <Box>
-          <Heading size="md" mb={4}>Sharing</Heading>
+        <Box className="apple-section">
+          <div className="apple-section-header">
+            <Heading size="md" mb={0}>Sharing</Heading>
+          </div>
         <FormControl display="flex" alignItems="center" mb={4}>
           <FormLabel mb="0">Share Configuration</FormLabel>
           <Switch
             isChecked={shareConfig}
-              onChange={(e) => setShareConfig(e.target.checked)}
+            onChange={(e) => setShareConfig(e.target.checked)}
+            colorScheme="blue"
           />
           <FormHelperText ml={2}>
             When enabled, other users can see and use this configuration
@@ -1611,6 +1883,7 @@ const WhackAMoleConfig = () => {
         onClick={handleSaveConfig} 
         isLoading={isLoading}
         loadingText="Saving..."
+        className="apple-button apple-button-primary"
       >
         {isEditing ? "Update Configuration" : "Save Configuration"}
       </Button>
