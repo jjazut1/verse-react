@@ -1,5 +1,6 @@
 {
   "name": "functions",
+  "description": "Firebase Cloud Functions for Verse Learning, including email notifications for assignments and daily reminders",
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
@@ -19,7 +20,9 @@
     "nodemailer": "^6.9.12"
   },
   "devDependencies": {
+    "@types/nodemailer": "^6.4.14",
+    "@types/testing-library__jest-dom": "^5.14.9",
     "typescript": "^5.1.6"
   },
   "private": true
-} 
+}

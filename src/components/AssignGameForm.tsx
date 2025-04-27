@@ -183,6 +183,13 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
             }}
             placeholder="student@example.com"
           />
+          <div style={{ 
+            fontSize: 'var(--font-size-xs)', 
+            color: 'var(--color-gray-500)',
+            marginTop: 'var(--spacing-1)'
+          }}>
+            An email notification with assignment details will be sent to this address.
+          </div>
         </div>
         
         <div style={{ marginBottom: 'var(--spacing-4)' }}>
@@ -279,6 +286,22 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
           >
             {loading ? 'Assigning...' : 'Assign Game'}
           </button>
+        </div>
+        
+        <div style={{ 
+          backgroundColor: 'var(--color-info-50)', 
+          borderRadius: 'var(--border-radius-sm)',
+          padding: 'var(--spacing-2)',
+          marginTop: 'var(--spacing-4)',
+          fontSize: 'var(--font-size-sm)',
+          color: 'var(--color-info-700)',
+          display: 'flex',
+          alignItems: 'center'
+        }}>
+          <div style={{ marginRight: 'var(--spacing-2)' }}>ℹ️</div>
+          <div>
+            When you assign a game, the student will receive an email with instructions and a link to access the assignment.
+          </div>
         </div>
       </form>
     </div>
