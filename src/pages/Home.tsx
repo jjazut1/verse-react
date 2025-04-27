@@ -1169,25 +1169,11 @@ const Home = () => {
         <div style={{ width: '100%', margin: '0 auto', padding: '0 var(--spacing-4)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-6)', alignItems: 'center', width: '100%' }}>
             <h1 style={{ fontSize: 'var(--font-size-5xl)', fontWeight: 'bold' }}>
-              Free Educational Games
+              Lumino
             </h1>
             <p style={{ fontSize: 'var(--font-size-xl)' }}>
-              Discover a world of educational games and professional tutoring services
+              Create Efficiently. Spark Curiosity. Shape Minds.
             </p>
-            <RouterLink 
-              to="/games"
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                color: 'white',
-                padding: 'var(--spacing-4) var(--spacing-8)',
-                borderRadius: 'var(--border-radius-md)',
-                textDecoration: 'none',
-                fontWeight: 'bold',
-                transition: 'background-color 0.2s ease-in-out'
-              }}
-            >
-              Start Playing
-            </RouterLink>
           </div>
         </div>
       </div>

@@ -6,7 +6,7 @@ import WhackAMole from './games/whack-a-mole/WhackAMole';
 import SortCategoriesEggReveal from './games/sort-categories-egg-reveal/SortCategoriesEggRevealAdapter';
 import { GameConfig } from '../types/game';
 
-export const Home: React.FC = () => {
+export const GameSelector: React.FC = () => {
   const [gameConfigs, setGameConfigs] = useState<GameConfig[]>([]);
   const [selectedGame, setSelectedGame] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState<string>('Player');
