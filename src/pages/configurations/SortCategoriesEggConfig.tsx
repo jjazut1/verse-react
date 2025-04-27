@@ -37,6 +37,7 @@ import SlateEditor from '../../components/SlateEditor';
 import { MAX_ITEMS_PER_CATEGORY, MIN_ITEMS_PER_CATEGORY, MAX_CATEGORIES, MIN_CATEGORIES } from '../../constants/game';
 import isEqual from 'lodash/isEqual';
 import { useUnsavedChangesContext } from '../../contexts/UnsavedChangesContext';
+import { generateAndUploadThumbnail } from '../../utils/thumbnailGenerator';
 
 interface CategoryTemplate {
   title: string;
@@ -493,40 +494,22 @@ const SortCategoriesEggConfig = () => {
   // Check if user is an admin
   useEffect(() => {
     const checkAdminStatus = async () => {
-      if (!currentUser || !currentUser.email) {
-        console.log('No current user or email');
+      if (!currentUser) {
+        console.log('No current user');
         return;
       }
       
       try {
-        // Normalize the email to lowercase for comparison
-        const userEmail = currentUser.email.toLowerCase();
-        console.log('Checking admin status for:', userEmail);
+        // Check if user has admin role in users collection
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
         
-        // Check if user exists in adminUsers collection
-        const adminUsersRef = collection(db, 'adminUsers');
-        const q = query(adminUsersRef, where('email', '==', userEmail));
-        const querySnapshot = await getDocs(q);
-        
-        console.log('Admin query result count:', querySnapshot.size);
-        
-        if (!querySnapshot.empty) {
-          const adminData = querySnapshot.docs[0].data();
-          console.log('Admin data found:', adminData);
-          // If they have a role of admin, set isAdmin to true
-          if (adminData.role === 'admin') {
-            console.log('User is an admin!');
-            setIsAdmin(true);
-          } else {
-            console.log('User found but role is not admin:', adminData.role);
-          }
+        if (userDoc.exists() && userDoc.data().role === 'admin') {
+          console.log('User is an admin!');
+          setIsAdmin(true);
         } else {
-          // Let's also try a more general query to see what admin emails exist
-          const allAdminsSnapshot = await getDocs(collection(db, 'adminUsers'));
-          console.log('All admin users:');
-          allAdminsSnapshot.forEach(doc => {
-            console.log('- Email:', doc.data().email, 'Role:', doc.data().role);
-          });
+          console.log('User is not an admin');
+          setIsAdmin(false);
         }
       } catch (error) {
         console.error('Error checking admin status:', error);
@@ -1750,6 +1733,33 @@ const SortCategoriesEggConfig = () => {
 
       // After successful save, reset the unsaved changes flag
       setHasUnsavedChanges(false);
+      
+      // Generate and upload thumbnail
+      try {
+        if (configId) {
+          console.log('Generating thumbnail for document ID:', configId);
+          
+          // Generate game-specific thumbnail data
+          const gameData = {
+            ...configData,
+            id: configId
+          };
+          
+          // Generate and upload the thumbnail
+          const thumbnailUrl = await generateAndUploadThumbnail(configId, gameData);
+          
+          // Update the document with the thumbnail URL
+          if (thumbnailUrl) {
+            await updateDoc(doc(db, 'userGameConfigs', configId), {
+              thumbnail: thumbnailUrl
+            });
+            console.log('Thumbnail generated and saved:', thumbnailUrl);
+          }
+        }
+      } catch (thumbnailError) {
+        console.error('Error generating thumbnail:', thumbnailError);
+        // Continue without thumbnail - it's not critical to game functionality
+      }
       
       // Navigate to the game with the new/updated configuration
       navigate(`/game/${configId}`);

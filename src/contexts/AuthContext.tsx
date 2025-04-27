@@ -32,6 +32,7 @@ interface AuthContextType {
   updateEmail: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   signup: (email: string, password: string, recaptchaToken?: string) => Promise<UserCredential>;
+  setCurrentUserAsAdmin: () => Promise<boolean>;
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -43,7 +44,8 @@ export const AuthContext = createContext<AuthContextType>({
   resetPassword: async () => {},
   updateEmail: async () => {},
   updatePassword: async () => {},
-  signup: async () => { return {} as UserCredential; }
+  signup: async () => { return {} as UserCredential; },
+  setCurrentUserAsAdmin: async () => { return false; }
 });
 
 export const useAuth = () => {
@@ -76,11 +78,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // Finally, check if they have a teacher role in their user document
+      // Check if they have a teacher or admin role in their user document
       const userRecord = await getDoc(doc(db, 'users', user.uid));
-      if (userRecord.exists() && userRecord.data().role === 'teacher') {
-        setIsTeacher(true);
-        return;
+      if (userRecord.exists()) {
+        const role = userRecord.data().role;
+        // If they have either teacher OR admin role, they should have teacher capabilities
+        if (role === 'teacher' || role === 'admin') {
+          setIsTeacher(true);
+          return;
+        }
       }
       
       setIsTeacher(false);
@@ -190,6 +196,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const setCurrentUserAsAdmin = async () => {
+    try {
+      if (!currentUser) {
+        throw new Error('No user logged in');
+      }
+      
+      await setDoc(doc(db, 'users', currentUser.uid), {
+        email: currentUser.email,
+        role: 'admin',
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      
+      // Since we're updating the user's role, check if they're a teacher as well
+      checkIfTeacher(currentUser);
+      
+      return true;
+    } catch (error) {
+      console.error('Error setting user as admin:', error);
+      throw error;
+    }
+  };
+
   const value = {
     currentUser,
     isTeacher,
@@ -199,7 +227,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     resetPassword,
     updateEmail,
     updatePassword,
-    signup
+    signup,
+    setCurrentUserAsAdmin
   };
 
   return (

@@ -13,6 +13,7 @@ import SortCategoriesEggConfig from './pages/configurations/SortCategoriesEggCon
 import Assignments from './pages/Assignments'
 import AssignmentDetails from './pages/AssignmentDetails'
 import AdminPage from './pages/AdminPage'
+import SetAdminPage from './pages/SetAdminPage'
 
 // Create a layout component that includes the Navbar
 const Layout = ({ children }: { children: React.ReactNode }) => {
@@ -79,6 +80,10 @@ const router = createBrowserRouter([
   {
     path: "/admin",
     element: <Layout><AdminPage /></Layout>,
+  },
+  {
+    path: "/set-admin",
+    element: <Layout><SetAdminPage /></Layout>,
   }
 ]);
 

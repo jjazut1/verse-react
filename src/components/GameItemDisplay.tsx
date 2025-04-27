@@ -89,22 +89,6 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
           {gameIcon}
         </div>
       )}
-      {/* Type indicator */}
-      <div style={{
-        position: 'absolute',
-        bottom: '2px',
-        right: '2px',
-        backgroundColor: 'rgba(255, 255, 255, 0.7)',
-        borderRadius: '50%',
-        width: '18px',
-        height: '18px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '10px'
-      }}>
-        {type === 'sort-categories-egg' ? 'S' : 'W'}
-      </div>
     </div>
   );
   
@@ -126,7 +110,7 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
         fontSize: 'var(--font-size-sm)',
         color: 'var(--color-gray-600)',
       }}>
-        Type: {type === 'sort-categories-egg' ? 'Categories' : 'Whack-a-Mole'}
+        Type: {type}
       </span>
     </div>
   );

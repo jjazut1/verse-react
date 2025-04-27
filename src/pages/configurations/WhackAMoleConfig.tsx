@@ -40,6 +40,7 @@ import { isEqual } from 'lodash';
 import TemplateSync from '../../components/TemplateSync';
 import EnhancedTemplateSync from '../../components/EnhancedTemplateSync';
 import { createRoot } from 'react-dom/client';
+import { generateAndUploadThumbnail } from '../../utils/thumbnailGenerator';
 
 // Create context for editor selection
 interface EditorSelectionContextType {
@@ -1345,6 +1346,33 @@ const WhackAMoleConfig = () => {
           status: "success",
           duration: 5000,
         });
+      }
+
+      // Generate and upload thumbnail
+      try {
+        if (configId) {
+          console.log('Generating thumbnail for document ID:', configId);
+          
+          // Include the ID in the game data
+          const gameDataWithId = {
+            ...configData,
+            id: configId
+          };
+          
+          // Generate and upload the thumbnail
+          const thumbnailUrl = await generateAndUploadThumbnail(configId, gameDataWithId);
+          
+          // Update the document with the thumbnail URL
+          if (thumbnailUrl) {
+            await updateDoc(doc(db, 'userGameConfigs', configId), {
+              thumbnail: thumbnailUrl
+            });
+            console.log('Thumbnail generated and saved:', thumbnailUrl);
+          }
+        }
+      } catch (thumbnailError) {
+        console.error('Error generating thumbnail:', thumbnailError);
+        // Continue without thumbnail - it's not critical to game functionality
       }
 
       // After successful save, reset the unsaved changes flag

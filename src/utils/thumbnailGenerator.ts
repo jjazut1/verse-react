@@ -22,8 +22,8 @@ export function generateThumbnailDataUrl(options: ThumbnailGenerationOptions): s
   
   // Set background color based on game type
   const backgroundColors = {
-    'sort-categories-egg': '#f0e6ff', // Light purple
-    'whack-a-mole': '#e6fff0'  // Light green
+    'sort-categories-egg': '#e1c3ff', // More vibrant purple
+    'whack-a-mole': '#b8ffcc'  // More vibrant green
   };
   
   // Fill background

@@ -1,14 +1,43 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useUnsavedChangesContext } from '../contexts/UnsavedChangesContext';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 const Navbar = () => {
   const { currentUser, isTeacher, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { hasUnsavedChanges, promptBeforeLeaving } = useUnsavedChangesContext();
-  const isAdmin = false; // Since userProfile is not available, default to false or determine admin status another way
+  const [isAdmin, setIsAdmin] = useState(false);
+  
+  // Check if user is an admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!currentUser) {
+        setIsAdmin(false);
+        return;
+      }
+      
+      try {
+        // Check if user has admin role in users collection
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists() && userDoc.data().role === 'admin') {
+          setIsAdmin(true);
+        } else {
+          setIsAdmin(false);
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+        setIsAdmin(false);
+      }
+    };
+    
+    checkAdminStatus();
+  }, [currentUser]);
   
   const navLinkStyle = (path: string) => ({
     color: 'white',
@@ -97,21 +126,21 @@ const Navbar = () => {
               >
                 Assignments
               </RouterLink>
-              {isAdmin && (
-                <RouterLink 
-                  to="/admin" 
-                  style={{
-                    ...navLinkStyle('/admin'),
-                    color: '#FFD700' // Gold color for admin link
-                  }}
-                  onClick={(e) => handleNavClick(e, '/admin')}
-                  onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
-                  onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-                >
-                  Admin
-                </RouterLink>
-              )}
             </>
+          )}
+          {isAdmin && (
+            <RouterLink 
+              to="/admin" 
+              style={{
+                ...navLinkStyle('/admin'),
+                color: '#FFD700' // Gold color for admin link
+              }}
+              onClick={(e) => handleNavClick(e, '/admin')}
+              onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+              onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              Admin
+            </RouterLink>
           )}
         </div>
         
