@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import AssignGameForm from './AssignGameForm';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { regenerateThumbnail } from '../utils/regenerateThumbnails';
 
 interface GameItemDisplayProps {
   title: string;
@@ -47,25 +50,86 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
   isOwner, 
   onDelete 
 }) => {
-  const { isTeacher } = useAuth();
+  const { isTeacher, currentUser } = useAuth();
   const [showAssignForm, setShowAssignForm] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  
+  // Check if user is an admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!currentUser) {
+        setIsAdmin(false);
+        return;
+      }
+      
+      try {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists() && userDoc.data().role === 'admin') {
+          setIsAdmin(true);
+        } else {
+          setIsAdmin(false);
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+        setIsAdmin(false);
+      }
+    };
+    
+    checkAdminStatus();
+  }, [currentUser]);
   
   // The icon to show when no thumbnail is available
   const gameIcon = getIconByType(type) || title.charAt(0);
   // Background color for the thumbnail placeholder
   const bgColor = getBackgroundColorByType(type);
   
+  const handleRegenerateThumbnail = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!id) return;
+    
+    setIsRegenerating(true);
+    try {
+      const success = await regenerateThumbnail(id);
+      if (success) {
+        // Show a temporary success indicator
+        const thumbnailEl = document.querySelector(`[data-game-id="${id}"] .game-thumbnail`);
+        if (thumbnailEl) {
+          thumbnailEl.classList.add('thumbnail-regenerated');
+          setTimeout(() => {
+            thumbnailEl.classList.remove('thumbnail-regenerated');
+          }, 2000);
+        }
+        // Force refresh the thumbnail by reloading the page
+        window.location.reload();
+      } else {
+        console.error('Failed to regenerate thumbnail');
+      }
+    } catch (error) {
+      console.error('Error regenerating thumbnail:', error);
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+  
   const renderThumbnail = () => (
-    <div style={{
-      width: '60px',
-      height: '60px',
-      backgroundColor: bgColor,
-      borderRadius: 'var(--border-radius-md)',
-      marginRight: 'var(--spacing-3)',
-      overflow: 'hidden',
-      flexShrink: 0,
-      position: 'relative'
-    }}>
+    <div 
+      className="game-thumbnail"
+      style={{
+        width: '60px',
+        height: '60px',
+        backgroundColor: bgColor,
+        borderRadius: 'var(--border-radius-md)',
+        marginRight: 'var(--spacing-3)',
+        overflow: 'hidden',
+        flexShrink: 0,
+        position: 'relative'
+      }}
+    >
       {thumbnail ? (
         <img 
           src={thumbnail} 
@@ -202,9 +266,50 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
     );
   };
 
+  const renderRegenerateButton = () => {
+    if (!isAdmin || !id) return null;
+    
+    return (
+      <button
+        onClick={handleRegenerateThumbnail}
+        disabled={isRegenerating}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          right: isOwner ? '80px' : (isTeacher ? '48px' : '16px'),
+          transform: 'translateY(-50%)',
+          background: 'none',
+          border: 'none',
+          cursor: isRegenerating ? 'default' : 'pointer',
+          color: isRegenerating ? 'var(--color-gray-400)' : 'var(--color-blue-600)',
+          padding: 'var(--spacing-1)',
+          borderRadius: 'var(--border-radius-sm)',
+          transition: 'all 0.2s',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10
+        }}
+        aria-label="Regenerate thumbnail"
+        title="Regenerate thumbnail"
+      >
+        {isRegenerating ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="loading-spinner">
+            <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="currentColor"/>
+            <path d="M12 2V4C16.41 4 20 7.59 20 12H22C22 6.48 17.52 2 12 2Z" fill="currentColor"/>
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4C7.58 4 4.01 7.58 4.01 12C4.01 16.42 7.58 20 12 20C15.73 20 18.84 17.45 19.73 14H17.65C16.83 16.33 14.61 18 12 18C8.69 18 6 15.31 6 12C6 8.69 8.69 6 12 6C13.66 6 15.14 6.69 16.22 7.78L13 11H20V4L17.65 6.35Z" fill="currentColor"/>
+          </svg>
+        )}
+      </button>
+    );
+  };
+
   if (onClick) {
     return (
-      <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative' }} data-game-id={id}>
         <div 
           style={containerStyles} 
           onClick={onClick}
@@ -220,6 +325,7 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
         </div>
         {renderDeleteButton()}
         {renderAssignButton()}
+        {renderRegenerateButton()}
         
         {/* Assignment Form Modal */}
         {showAssignForm && (
@@ -248,7 +354,7 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
   }
 
   return isPlayable && id ? (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }} data-game-id={id}>
       <RouterLink 
         to={`/game/${id}`} 
         style={containerStyles}
@@ -264,6 +370,7 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
       </RouterLink>
       {renderDeleteButton()}
       {renderAssignButton()}
+      {renderRegenerateButton()}
       
       {/* Assignment Form Modal */}
       {showAssignForm && (
@@ -289,13 +396,14 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
       )}
     </div>
   ) : (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }} data-game-id={id}>
       <div style={containerStyles}>
         {renderThumbnail()}
         {renderInfo()}
       </div>
       {renderDeleteButton()}
       {renderAssignButton()}
+      {renderRegenerateButton()}
       
       {/* Assignment Form Modal */}
       {showAssignForm && (

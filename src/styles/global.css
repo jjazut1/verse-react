@@ -44,6 +44,18 @@
   --color-green-800: #22543D;
   --color-green-900: #1C4532;
 
+  /* Blue colors */
+  --color-blue-50: #ebf8ff;
+  --color-blue-100: #bee3f8;
+  --color-blue-200: #90cdf4;
+  --color-blue-300: #63b3ed;
+  --color-blue-400: #4299e1;
+  --color-blue-500: #3182ce;
+  --color-blue-600: #2b6cb0;
+  --color-blue-700: #2c5282;
+  --color-blue-800: #2a4365;
+  --color-blue-900: #1a365d;
+
   /* Spacing */
   --spacing-px: 1px;
   --spacing-0: 0;
@@ -142,6 +154,32 @@ button:hover {
 /* Transition styles */
 button, a {
   transition: all 0.2s ease-in-out;
+}
+
+/* Thumbnail regeneration animation */
+@keyframes pulse-border {
+  0% {
+    box-shadow: 0 0 0 0 rgba(49, 130, 206, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(49, 130, 206, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(49, 130, 206, 0);
+  }
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.thumbnail-regenerated {
+  animation: pulse-border 1.5s ease-out;
+}
+
+.loading-spinner {
+  animation: rotate 1.5s linear infinite;
 }
 
 /* Mobile devices */

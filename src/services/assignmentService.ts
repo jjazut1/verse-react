@@ -1,6 +1,7 @@
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { Assignment, Attempt } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 // Get all assignments for a specific teacher
 export const getTeacherAssignments = async (teacherId: string): Promise<Assignment[]> => {
@@ -47,9 +48,28 @@ export const getAssignment = async (assignmentId: string): Promise<Assignment | 
 };
 
 // Create a new assignment
-export const createAssignment = async (assignmentData: Omit<Assignment, 'id'>): Promise<string> => {
+export const createAssignment = async (assignmentData: Omit<Assignment, 'id' | 'linkToken' | 'status' | 'completedCount' | 'createdAt'>): Promise<string> => {
   try {
-    const docRef = await addDoc(collection(db, 'assignments'), assignmentData);
+    // Generate a unique link token for the assignment
+    const linkToken = uuidv4();
+    
+    // Prepare complete assignment data
+    const completeAssignmentData = {
+      ...assignmentData,
+      linkToken,
+      status: 'assigned',
+      completedCount: 0,
+      createdAt: Timestamp.now(),
+      // Flag to track if email is sent - this will be used by the Cloud Function
+      emailSent: false
+    };
+    
+    // Create assignment document in Firestore
+    const docRef = await addDoc(collection(db, 'assignments'), completeAssignmentData);
+    
+    console.log('Assignment created with ID:', docRef.id);
+    console.log('Email will be sent automatically via Firebase Cloud Functions');
+    
     return docRef.id;
   } catch (error) {
     console.error('Error creating assignment:', error);
