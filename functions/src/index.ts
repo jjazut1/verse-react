@@ -1,100 +1,68 @@
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
-import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { defineString } from 'firebase-functions/params';
-import * as admin from 'firebase-admin';
-import * as nodemailer from 'nodemailer';
+import { defineString } from "firebase-functions/params";
+import { onRequest } from "firebase-functions/v2/https";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { ScheduleOptions, onSchedule } from "firebase-functions/v2/scheduler";
+import * as logger from "firebase-functions/logger";
+import * as admin from "firebase-admin";
+import * as nodemailer from "nodemailer";
 
+// Initialize Firebase
 admin.initializeApp();
 
+// Define environment parameters
+const emailUser = defineString("EMAIL_USER");
+const emailPassword = defineString("EMAIL_PASSWORD");
+
+// Interface for Assignment data
 interface Assignment {
-  id?: string;
-  teacherId: string;
+  id: string;
+  studentId: string;
+  studentName: string;
   studentEmail: string;
   gameId: string;
+  gameTitle: string;
   gameName: string;
-  gameType: string;
-  linkToken: string;
   deadline: admin.firestore.Timestamp;
-  timesRequired: number;
-  completedCount: number;
-  status: string;
-  createdAt: admin.firestore.Timestamp;
-  lastCompletedAt?: admin.firestore.Timestamp;
+  dueDate: admin.firestore.Timestamp;
+  completed: boolean;
+  score?: number;
+  linkToken: string;
+  emailSent?: boolean;
 }
 
-// Define config parameters
-const emailUser = defineString('email.user');
-const emailPassword = defineString('email.password');
-const appUrl = defineString('app.url');
+// Configure nodemailer
+const getTransporter = () => {
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: emailUser.value(),
+      pass: emailPassword.value(),
+    },
+  });
+};
 
-// Configure nodemailer with your email service (e.g., Gmail, SendGrid)
-// For production, consider using a service like SendGrid, Mailgun, etc.
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: emailUser.value(),
-    pass: emailPassword.value(),
-  },
+// HTTP hello world function
+export const helloWorld = onRequest((request, response) => {
+  logger.info("Hello logs!", { structuredData: true });
+  response.send("Hello from Verse Learning!");
 });
 
-// Function to send assignment emails
-exports.sendAssignmentEmail = onDocumentCreated('assignments/{assignmentId}', async (event) => {
-  const snapshot = event.data;
-  if (!snapshot) {
-    console.log('No data associated with the event');
-    return;
-  }
-
+// HTTP test email function
+export const testEmail = onRequest(async (request, response) => {
   try {
-    const assignment = snapshot.data() as Assignment;
-    const assignmentId = event.params.assignmentId;
-    
-    // Get teacher information
-    const teacherDoc = await admin.firestore().collection('users').doc(assignment.teacherId).get();
-    const teacherData = teacherDoc.data();
-    const teacherName = teacherData?.displayName || 'Your teacher';
-    
-    // Create assignment URL
-    const assignmentUrl = `${appUrl.value()}/assignment/${assignment.linkToken}`;
-    
-    // Format deadline date
-    const deadline = assignment.deadline.toDate();
-    const formattedDeadline = deadline.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+    const recipientEmail = request.query.email?.toString() || emailUser.value();
+    const transporter = getTransporter();
     
     // Email content
     const mailOptions = {
       from: `"Verse Learning" <${emailUser.value()}>`,
-      to: assignment.studentEmail,
-      subject: `New Assignment: ${assignment.gameName}`,
+      to: recipientEmail,
+      subject: "Test Email from Verse Learning",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2>New Assignment</h2>
-          <p>Hello,</p>
-          <p>${teacherName} has assigned you a new educational game.</p>
-          
-          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <h3 style="margin-top: 0;">${assignment.gameName}</h3>
-            <p><strong>Type:</strong> ${assignment.gameType}</p>
-            <p><strong>Complete by:</strong> ${formattedDeadline}</p>
-            <p><strong>Times to complete:</strong> ${assignment.timesRequired}</p>
-          </div>
-          
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${assignmentUrl}" style="background-color: #3182CE; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
-              Play Assignment
-            </a>
-          </div>
-          
-          <p>If the button doesn't work, copy and paste this link into your browser:</p>
-          <p style="word-break: break-all;"><a href="${assignmentUrl}">${assignmentUrl}</a></p>
-          
-          <hr style="margin: 30px 0; border: none; border-top: 1px solid #eaeaea;">
-          <p style="color: #666; font-size: 12px;">This is an automated message from Verse Learning.</p>
+          <h2>Test Email</h2>
+          <p>This is a test email from Verse Learning.</p>
+          <p>If you're seeing this, email functionality is working correctly!</p>
         </div>
       `,
     };
@@ -102,90 +70,166 @@ exports.sendAssignmentEmail = onDocumentCreated('assignments/{assignmentId}', as
     // Send email
     await transporter.sendMail(mailOptions);
     
-    // Update assignment to mark email as sent
-    await admin.firestore().collection('assignments').doc(assignmentId).update({
-      emailSent: true,
-      emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+    response.send({
+      success: true,
+      message: "Test email sent successfully",
+      sentTo: recipientEmail,
     });
-    
-    return { success: true };
   } catch (error) {
-    console.error('Error sending assignment email:', error);
-    return { error: error instanceof Error ? error.message : 'Unknown error' };
+    logger.error("Error sending test email:", error);
+    response.status(500).send({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
   }
 });
 
-// Daily scheduled function to send reminder emails for approaching deadlines
-exports.sendReminderEmails = onSchedule('every 24 hours', async (event) => {
+// Function to send email on assignment creation
+export const sendAssignmentEmail = onDocumentCreated("assignments/{assignmentId}", async (event) => {
+  const snapshot = event.data;
+  if (!snapshot) {
+    logger.log("No data associated with the event");
+    return;
+  }
+  
+  try {
+    // Get the assignment data
+    const assignment = snapshot.data() as Assignment;
+    const assignmentId = event.params.assignmentId;
+    
+    // Only send email if emailSent is not true
+    if (assignment.emailSent === true) {
+      logger.log("Email already sent for assignment:", assignmentId);
+      return;
+    }
+    
+    // Format the due date
+    const dueDate = assignment.dueDate.toDate();
+    const formattedDate = dueDate.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    
+    // Construct the game link with token
+    const gameLink = `https://verse-learning.vercel.app/play/${assignment.gameId}?token=${assignment.linkToken}`;
+    
+    // Email content
+    const mailOptions = {
+      from: `"Verse Learning" <${emailUser.value()}>`,
+      to: assignment.studentEmail,
+      subject: `New Assignment: ${assignment.gameTitle}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>New Assignment from Verse Learning</h2>
+          <p>Hello ${assignment.studentName},</p>
+          <p>You have been assigned a new learning activity:</p>
+          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <p><strong>Activity:</strong> ${assignment.gameTitle}</p>
+            <p><strong>Due Date:</strong> ${formattedDate}</p>
+          </div>
+          <p><a href="${gameLink}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Start Activity</a></p>
+          <p>This link is unique to you. Please do not share it with others.</p>
+        </div>
+      `,
+    };
+    
+    // Send email
+    const transporter = getTransporter();
+    await transporter.sendMail(mailOptions);
+    
+    // Update the assignment document to mark email as sent
+    await admin.firestore().collection("assignments").doc(assignmentId).update({
+      emailSent: true,
+    });
+    
+    logger.log("Assignment email sent to:", assignment.studentEmail);
+  } catch (error) {
+    logger.error("Error sending assignment email:", error instanceof Error ? error.message : "Unknown error");
+  }
+});
+
+// Scheduled function to send reminder emails
+const scheduleOptions: ScheduleOptions = {
+  schedule: "0 8 * * *", // Run at 8:00 AM every day
+  timeZone: "America/New_York",
+};
+
+export const sendReminderEmails = onSchedule(scheduleOptions, async () => {
   try {
     const now = admin.firestore.Timestamp.now();
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(23, 59, 59, 999);
-    const tomorrowTimestamp = admin.firestore.Timestamp.fromDate(tomorrow);
+    const tomorrow = admin.firestore.Timestamp.fromDate(
+      new Date(now.toMillis() + 24 * 60 * 60 * 1000)
+    );
     
-    // Get assignments due tomorrow that aren't completed
-    const assignmentsSnapshot = await admin.firestore()
-      .collection('assignments')
-      .where('deadline', '<=', tomorrowTimestamp)
-      .where('deadline', '>=', now)
-      .where('status', '!=', 'completed')
+    // Query assignments due in the next 24 hours that are not completed
+    const assignmentsSnapshot = await admin
+      .firestore()
+      .collection("assignments")
+      .where("dueDate", ">=", now)
+      .where("dueDate", "<=", tomorrow)
+      .where("completed", "==", false)
       .get();
     
-    const reminderPromises = assignmentsSnapshot.docs.map(async (doc) => {
+    if (assignmentsSnapshot.empty) {
+      logger.log("No assignments due in the next 24 hours");
+      return;
+    }
+    
+    // Process each assignment
+    const transporter = getTransporter();
+    const emailPromises = assignmentsSnapshot.docs.map(async (doc) => {
       const assignment = doc.data() as Assignment;
       
-      // Create assignment URL
-      const assignmentUrl = `${appUrl.value()}/assignment/${assignment.linkToken}`;
-      
-      // Format deadline date
-      const deadline = assignment.deadline.toDate();
-      const formattedDeadline = deadline.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
+      // Format the due date
+      const dueDate = assignment.dueDate.toDate();
+      const formattedDate = dueDate.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
       });
+      
+      // Construct the game link with token
+      const gameLink = `https://verse-learning.vercel.app/play/${assignment.gameId}?token=${assignment.linkToken}`;
       
       // Email content
       const mailOptions = {
         from: `"Verse Learning" <${emailUser.value()}>`,
         to: assignment.studentEmail,
-        subject: `Reminder: Assignment Due Soon - ${assignment.gameName}`,
+        subject: `Reminder: ${assignment.gameTitle} Due Soon`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>Assignment Reminder</h2>
-            <p>Hello,</p>
-            <p>This is a friendly reminder that you have an assignment due soon.</p>
-            
+            <h2>Assignment Due Reminder</h2>
+            <p>Hello ${assignment.studentName},</p>
+            <p>This is a friendly reminder that you have an assignment due soon:</p>
             <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              <h3 style="margin-top: 0;">${assignment.gameName}</h3>
-              <p><strong>Due by:</strong> ${formattedDeadline}</p>
-              <p><strong>Current progress:</strong> ${assignment.completedCount}/${assignment.timesRequired} completed</p>
+              <p><strong>Activity:</strong> ${assignment.gameTitle}</p>
+              <p><strong>Due Date:</strong> ${formattedDate}</p>
             </div>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${assignmentUrl}" style="background-color: #3182CE; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
-                Complete Assignment
-              </a>
-            </div>
-            
-            <p>If the button doesn't work, copy and paste this link into your browser:</p>
-            <p style="word-break: break-all;"><a href="${assignmentUrl}">${assignmentUrl}</a></p>
-            
-            <hr style="margin: 30px 0; border: none; border-top: 1px solid #eaeaea;">
-            <p style="color: #666; font-size: 12px;">This is an automated message from Verse Learning.</p>
+            <p><a href="${gameLink}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Complete Activity</a></p>
           </div>
         `,
       };
       
-      // Send reminder email
-      return transporter.sendMail(mailOptions);
+      // Send email
+      return transporter
+        .sendMail(mailOptions)
+        .then(() => {
+          logger.log(`Reminder email sent to ${assignment.studentEmail} for assignment ${assignment.id}`);
+        })
+        .catch((error) => {
+          logger.error(
+            `Error sending reminder email for assignment ${assignment.id}:`,
+            error instanceof Error ? error.message : "Unknown error"
+          );
+        });
     });
     
-    await Promise.all(reminderPromises);
-    console.log(`Successfully sent ${reminderPromises.length} reminder emails`);
+    await Promise.all(emailPromises);
+    logger.log(`Processed ${assignmentsSnapshot.size} reminder emails`);
   } catch (error) {
-    console.error('Error sending reminder emails:', error);
+    logger.error("Error sending reminder emails:", error instanceof Error ? error.message : "Unknown error");
   }
-}); 
+});
