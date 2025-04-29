@@ -5,9 +5,14 @@ import { ScheduleOptions, onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import * as nodemailer from "nodemailer";
+import { GoogleAuth } from "google-auth-library";
+import fetch from "node-fetch";
 
-// Initialize Firebase
-admin.initializeApp();
+// Initialize Firebase with explicit project ID
+admin.initializeApp({
+  projectId: 'verse-11f2d',
+  credential: admin.credential.applicationDefault()
+});
 
 // Define environment parameters
 const emailUser = defineString("EMAIL_USER");
@@ -91,62 +96,100 @@ export const sendAssignmentEmail = onDocumentCreated("assignments/{assignmentId}
     logger.log("No data associated with the event");
     return;
   }
-  
+
   try {
-    // Get the assignment data
     const assignment = snapshot.data() as Assignment;
     const assignmentId = event.params.assignmentId;
-    
-    // Only send email if emailSent is not true
+
+    // Local dev logs
+    console.log("Raw snapshot data:", JSON.stringify(snapshot.data()));
+    console.log("Assignment object:", JSON.stringify(assignment));
+
+    // Cloud structured log
+    logger.log("Assignment creation event", {
+      assignmentId,
+      studentEmail: assignment.studentEmail,
+    });
+
     if (assignment.emailSent === true) {
-      logger.log("Email already sent for assignment:", assignmentId);
+      logger.log("Email already sent", { assignmentId });
       return;
     }
-    
-    // Format the due date
-    const dueDate = assignment.dueDate.toDate();
+
+    // Log dueDate/deadline for debug
+    logger.log("Checking dueDate and deadline", {
+      dueDate: assignment.dueDate,
+      deadline: assignment.deadline,
+    });
+
+    // Robust Timestamp check
+    const rawDueDate = assignment.dueDate ?? assignment.deadline;
+
+    if (!rawDueDate || typeof rawDueDate.toDate !== "function") {
+      logger.error("Invalid or missing dueDate/deadline Timestamp", {
+        assignmentId,
+        dueDateRaw: assignment.dueDate,
+        deadlineRaw: assignment.deadline,
+      });
+      return;
+    }
+
+    const dueDate = rawDueDate.toDate();
     const formattedDate = dueDate.toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
     });
+
+    // Update the game link URL to ensure it's correctly formatted
+    // Make sure there's no trailing slash before the play path
+    const baseUrl = "https://verse-learning.vercel.app";
+    const gameLink = `${baseUrl}/play/${assignment.gameId}?token=${assignment.linkToken}`;
     
-    // Construct the game link with token
-    const gameLink = `https://verse-learning.vercel.app/play/${assignment.gameId}?token=${assignment.linkToken}`;
-    
-    // Email content
+    logger.log("Generated game link", { gameLink });
+
     const mailOptions = {
       from: `"Verse Learning" <${emailUser.value()}>`,
       to: assignment.studentEmail,
-      subject: `New Assignment: ${assignment.gameTitle}`,
+      subject: `New Assignment: ${assignment.gameTitle || assignment.gameName}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2>New Assignment from Verse Learning</h2>
-          <p>Hello ${assignment.studentName},</p>
+          <p>Hello ${assignment.studentName || "Student"},</p>
           <p>You have been assigned a new learning activity:</p>
           <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <p><strong>Activity:</strong> ${assignment.gameTitle}</p>
+            <p><strong>Activity:</strong> ${assignment.gameTitle || assignment.gameName}</p>
             <p><strong>Due Date:</strong> ${formattedDate}</p>
           </div>
           <p><a href="${gameLink}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Start Activity</a></p>
+          <p>If the button doesn't work, copy and paste this link into your browser: ${gameLink}</p>
           <p>This link is unique to you. Please do not share it with others.</p>
         </div>
       `,
     };
-    
+
     // Send email
     const transporter = getTransporter();
     await transporter.sendMail(mailOptions);
     
-    // Update the assignment document to mark email as sent
-    await admin.firestore().collection("assignments").doc(assignmentId).update({
-      emailSent: true,
+    // Instead of trying to update Firestore directly (which is causing permission issues),
+    // just log a success message and consider the email part done
+    logger.log("Assignment email successfully sent", {
+      assignmentId,
+      email: assignment.studentEmail,
+      note: "Due to permission restrictions, the document was not updated with emailSent=true."
     });
     
-    logger.log("Assignment email sent to:", assignment.studentEmail);
+    // Important: The client side should handle updating the emailSent flag
+    // or you can set up a separate function with different permissions to do this
+
   } catch (error) {
-    logger.error("Error sending assignment email:", error instanceof Error ? error.message : "Unknown error");
+    logger.error("Error sending assignment email", {
+      error: error instanceof Error ? error.message : String(error),
+      assignmentId: event.params.assignmentId,
+      details: error instanceof Error && error.stack ? error.stack : "No stack trace available"
+    });
   }
 });
 
@@ -231,5 +274,75 @@ export const sendReminderEmails = onSchedule(scheduleOptions, async () => {
     logger.log(`Processed ${assignmentsSnapshot.size} reminder emails`);
   } catch (error) {
     logger.error("Error sending reminder emails:", error instanceof Error ? error.message : "Unknown error");
+  }
+});
+
+// Generalized helper for internal service calls
+export async function callInternalService(
+  baseUrl: string,
+  pathWithQuery: string,
+  options: any = {},
+  maxRetries = 3
+): Promise<any> {
+  const auth = new GoogleAuth({ scopes: "https://www.googleapis.com/auth/cloud-platform" });
+  const client = await auth.getClient();
+  // @ts-ignore
+  const idToken = await client.fetchIdToken(baseUrl);
+
+  // Merge headers
+  options.headers = {
+    ...(options.headers || {}),
+    Authorization: `Bearer ${idToken}`,
+  };
+
+  // Retry logic
+  let attempt = 0, delay = 500;
+  while (attempt < maxRetries) {
+    try {
+      const response = await fetch(`${baseUrl}${pathWithQuery}`, options);
+      if (response.ok || response.status < 500) return response;
+    } catch (err) {
+      if (attempt === maxRetries - 1) throw err;
+    }
+    await new Promise(res => setTimeout(res, delay));
+    delay *= 2;
+    attempt++;
+  }
+  throw new Error("Max retries reached");
+}
+
+export const automateTestEmail = onRequest(async (req, res) => {
+  try {
+    // Update with the correct URL from your deployed testEmail function
+    const baseRunUrl = 'https://testemail-5zrv23g6za-uc.a.run.app';
+    const pathWithQuery = '?email=james@learnwithverse.com';
+    const response = await callInternalService(baseRunUrl, pathWithQuery);
+
+    const contentType = response.headers.get('content-type');
+    if (!response.ok) {
+      const text = await response.text();
+      res.status(response.status).send({
+        error: `Request failed with status ${response.status}`,
+        reason: response.status >= 500 ? 'Cloud Run service error' : 'Client error or unauthorized',
+        body: text,
+      });
+      return;
+    }
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      res.status(200).send(data);
+    } else {
+      const text = await response.text();
+      res.status(200).send({
+        message: 'Non-JSON response received',
+        body: text,
+      });
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      res.status(500).send({ error: error.message });
+    } else {
+      res.status(500).send({ error: String(error) });
+    }
   }
 });

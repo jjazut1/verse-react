@@ -11,6 +11,24 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
     }
     
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+    
+    function isTeacherOrAdmin() {
+      return isTeacher() || isAdmin();
+    }
+    
+    // Helper function to check if request is from a service account
+    function isServiceAccount() {
+      return request.auth != null && 
+             request.auth.token != null && 
+             request.auth.token.email != null && 
+             request.auth.token.email.matches(".*@verse-11f2d.iam.gserviceaccount.com");
+    }
+    
     // Allow anyone to read high scores
     match /highScores/{highScoreId} {
       allow read: if true;
@@ -47,13 +65,13 @@ service cloud.firestore {
     // Games collection
     match /games/{gameId} {
       allow read: if true;
-      allow create, update, delete: if isTeacher();
+      allow create, update, delete: if isTeacherOrAdmin();
     }
     
     // Game configurations collection (admin only)
     match /gameConfigs/{configId} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAdmin();
     }
     
     // User-created game configurations
@@ -85,14 +103,24 @@ service cloud.firestore {
     
     // Assignments collection
     match /assignments/{assignmentId} {
+      // Allow service accounts to read/write
+      allow read, write: if isServiceAccount();
+      
+      // Regular user access rules
       allow read: if isAuthenticated();
-      allow create, update, delete: if isTeacher();
+      allow create, update, delete: if isTeacherOrAdmin();
     }
     
     // Teachers collection
     match /teachers/{teacherId} {
       allow read: if true;
       allow write: if false;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isAdmin() || request.auth.uid == userId;
     }
     
     // Sort Categories Egg collection
