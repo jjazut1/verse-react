@@ -144,7 +144,7 @@ export const sendAssignmentEmail = onDocumentCreated("assignments/{assignmentId}
 
     // Update the game link URL to ensure it's correctly formatted
     // Make sure there's no trailing slash before the play path
-    const baseUrl = "https://verse-learning.vercel.app";
+    const baseUrl = "https://r2process.com";
     const gameLink = `${baseUrl}/play/${assignment.gameId}?token=${assignment.linkToken}`;
     
     logger.log("Generated game link", { gameLink });
@@ -235,7 +235,7 @@ export const sendReminderEmails = onSchedule(scheduleOptions, async () => {
       });
       
       // Construct the game link with token
-      const gameLink = `https://verse-learning.vercel.app/play/${assignment.gameId}?token=${assignment.linkToken}`;
+      const gameLink = `https://r2process.com/play/${assignment.gameId}?token=${assignment.linkToken}`;
       
       // Email content
       const mailOptions = {

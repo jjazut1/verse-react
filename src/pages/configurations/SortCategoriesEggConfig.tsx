@@ -505,9 +505,9 @@ const SortCategoriesEggConfig = () => {
         const userDoc = await getDoc(userDocRef);
         
         if (userDoc.exists() && userDoc.data().role === 'admin') {
-          console.log('User is an admin!');
-          setIsAdmin(true);
-        } else {
+            console.log('User is an admin!');
+            setIsAdmin(true);
+          } else {
           console.log('User is not an admin');
           setIsAdmin(false);
         }

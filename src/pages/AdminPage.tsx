@@ -43,8 +43,8 @@ const AdminPage: React.FC = () => {
         const userDoc = await getDoc(userDocRef);
         
         const isAdmin = userDoc.exists() && userDoc.data().role === 'admin';
-        
-        if (!isAdmin) {
+      
+      if (!isAdmin) {
           toast({
             title: "Access Denied",
             description: "You do not have permission to access the admin page.",

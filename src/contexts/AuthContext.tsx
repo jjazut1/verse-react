@@ -84,8 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const role = userRecord.data().role;
         // If they have either teacher OR admin role, they should have teacher capabilities
         if (role === 'teacher' || role === 'admin') {
-          setIsTeacher(true);
-          return;
+        setIsTeacher(true);
+        return;
         }
       }
       

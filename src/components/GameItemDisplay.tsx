@@ -120,14 +120,14 @@ const GameItemDisplay: React.FC<GameItemDisplayProps> = ({
     <div 
       className="game-thumbnail"
       style={{
-        width: '60px',
-        height: '60px',
-        backgroundColor: bgColor,
-        borderRadius: 'var(--border-radius-md)',
-        marginRight: 'var(--spacing-3)',
-        overflow: 'hidden',
-        flexShrink: 0,
-        position: 'relative'
+      width: '60px',
+      height: '60px',
+      backgroundColor: bgColor,
+      borderRadius: 'var(--border-radius-md)',
+      marginRight: 'var(--spacing-3)',
+      overflow: 'hidden',
+      flexShrink: 0,
+      position: 'relative'
       }}
     >
       {thumbnail ? (

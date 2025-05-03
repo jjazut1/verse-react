@@ -128,19 +128,19 @@ const Navbar = () => {
               </RouterLink>
             </>
           )}
-          {isAdmin && (
-            <RouterLink 
-              to="/admin" 
-              style={{
-                ...navLinkStyle('/admin'),
-                color: '#FFD700' // Gold color for admin link
-              }}
-              onClick={(e) => handleNavClick(e, '/admin')}
-              onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
-              onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-            >
-              Admin
-            </RouterLink>
+              {isAdmin && (
+                <RouterLink 
+                  to="/admin" 
+                  style={{
+                    ...navLinkStyle('/admin'),
+                    color: '#FFD700' // Gold color for admin link
+                  }}
+                  onClick={(e) => handleNavClick(e, '/admin')}
+                  onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+                  onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+                >
+                  Admin
+                </RouterLink>
           )}
         </div>
         

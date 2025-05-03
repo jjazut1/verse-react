@@ -50,10 +50,20 @@ service cloud.firestore {
         request.resource.data.createdAt is timestamp &&
         request.resource.data.gameType is string &&
         
-        // Game config validation
+        // Game config validation 
         exists(/databases/$(database)/documents/userGameConfigs/$(request.resource.data.configId)) &&
-        get(/databases/$(database)/documents/userGameConfigs/$(request.resource.data.configId)).data.share == true &&
-        get(/databases/$(database)/documents/userGameConfigs/$(request.resource.data.configId)).data.type == request.resource.data.gameType;
+        (
+          // Either the config has share=true and the type matches
+          (
+            get(/databases/$(database)/documents/userGameConfigs/$(request.resource.data.configId)).data.share == true &&
+            get(/databases/$(database)/documents/userGameConfigs/$(request.resource.data.configId)).data.type == request.resource.data.gameType
+          )
+          ||
+          // Or it's a public demo config
+          (
+            request.resource.data.configId in ['xOoA0q7ILtrdqdJt1ki5', 'Ua17C8DK6ZFsujj9Z1ZC']
+          )
+        );
     }
 
     function isValidPlayerName(name) {
@@ -133,6 +143,12 @@ service cloud.firestore {
     match /blankGameTemplates/{templateId} {
       allow read: if true;
       allow write: if false;
+    }
+    
+    // Category Templates collection
+    match /categoryTemplates/{templateId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 } 

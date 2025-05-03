@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "verse-11f2d"
-  }
+  },
+  "targets": {
+    "verse-11f2d": {
+      "hosting": {
+        "default": [
+          "verse-11f2d"
+        ],
+        "r2process": [
+          "r2process"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
