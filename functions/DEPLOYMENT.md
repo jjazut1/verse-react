@@ -1,97 +1,103 @@
-# Deploying Firebase Functions for Email Functionality
+# Deploying Firebase Cloud Functions
 
-This guide walks through the steps to deploy the Firebase Cloud Functions for the email notification system.
+This guide provides instructions for deploying the email notification functions for assignments.
 
 ## Prerequisites
 
-1. Firebase CLI installed globally:
-   ```bash
+1. Make sure you have Firebase CLI installed:
+   ```
    npm install -g firebase-tools
    ```
 
-2. Firebase project configured:
-   ```bash
+2. Log in to Firebase:
+   ```
    firebase login
-   firebase use --add
    ```
 
-## Setting Up Environment Variables
+## Set up email credentials
 
-For the email functions to work properly, you need to set up the following environment variables:
+These functions use Gmail to send emails. You need to set up credentials for your email account:
 
-1. For Firebase Parameters (new approach):
-   ```bash
-   # Set email credentials (replace with actual values)
-   firebase functions:secrets:set EMAIL_USER="your-email@gmail.com"
-   firebase functions:secrets:set EMAIL_PASSWORD="your-app-password"
-   
-   # Set the application URL
-   firebase functions:params:set app.url "https://yourapp.vercel.app" --project your-project-id
+1. Create a Google App Password (if using Gmail):
+   - Go to your Google Account > Security
+   - Enable 2-Step Verification if not already enabled
+   - Go to App passwords and create a new app password
+   - Select "Other" as the app and give it a name like "Verse Learning"
+   - Copy the generated password
+
+2. Set the email credentials as Firebase environment variables:
    ```
-
-2. For Gmail users:
-   - You'll need to use an "App Password" instead of your regular password
-   - Go to your Google Account → Security → 2-Step Verification → App Passwords
-   - Create a new app password for "Firebase Functions"
-
-## Deployment Process
-
-1. Navigate to the functions directory:
-   ```bash
-   cd functions
+   firebase functions:secrets:set EMAIL_USER
    ```
+   (Enter your Gmail address when prompted)
 
-2. Build the functions:
-   ```bash
-   npm run build
    ```
-
-3. Deploy the functions:
-   ```bash
-   npm run deploy
+   firebase functions:secrets:set EMAIL_PASSWORD
    ```
+   (Enter the app password you generated)
 
-4. Verify deployment:
-   ```bash
-   firebase functions:list
+## Deploy the functions
+
+Deploy all functions:
+```
+cd functions
+npm run build
+firebase deploy --only functions
+```
+
+Or deploy specific functions:
+```
+firebase deploy --only functions:sendAssignmentEmail,functions:sendReminderEmails
+```
+
+## Testing the email functions
+
+### Test sending an assignment email manually
+
+You can use the `testAssignmentEmail` HTTP function to test sending an email for a specific assignment:
+
+```
+curl https://YOUR_REGION-YOUR_PROJECT_ID.cloudfunctions.net/testAssignmentEmail?assignmentId=YOUR_ASSIGNMENT_ID
+```
+
+Replace:
+- `YOUR_REGION` with your Firebase Functions region (e.g., `us-central1`)
+- `YOUR_PROJECT_ID` with your Firebase project ID
+- `YOUR_ASSIGNMENT_ID` with the ID of an existing assignment
+
+### Test email configuration
+
+Use the `testEmail` function to check if the email configuration is working:
+
+```
+curl https://YOUR_REGION-YOUR_PROJECT_ID.cloudfunctions.net/testEmail?email=YOUR_EMAIL
+```
+
+## Troubleshooting
+
+If you encounter issues with email sending:
+
+1. Check the Firebase Functions logs:
    ```
-
-## Testing the Deployed Functions
-
-1. Create a new assignment through your application UI
-2. Check the student's email to verify they received the notification
-3. Check Firestore to confirm that the `emailSent` field was updated
-
-## Monitoring and Troubleshooting
-
-1. View function logs:
-   ```bash
    firebase functions:log
    ```
 
-2. Common issues:
-   - Email credentials incorrect → Check your environment variables
-   - Gmail security settings → Ensure "less secure apps" is enabled or use App Passwords
-   - Function timeout → Check for long-running operations in your code
-
-## Updating Deployed Functions
-
-After making changes to your functions:
-
-1. Build the functions:
-   ```bash
-   npm run build
+2. Verify your email credentials are set correctly:
+   ```
+   firebase functions:secrets:get EMAIL_USER
+   firebase functions:secrets:get EMAIL_PASSWORD
    ```
 
-2. Deploy only the updated functions:
-   ```bash
-   firebase deploy --only functions:sendAssignmentEmail,functions:sendReminderEmails
-   ```
+3. Make sure your Gmail account allows less secure apps or that you're using an App Password.
 
-## Production Recommendations
+4. If using Gmail, check if you're hitting sending limits (Google may limit the number of emails sent per day).
 
-1. Consider using a dedicated email service like SendGrid, Mailgun, or AWS SES for production
-2. Implement retry logic for failed emails
-3. Add monitoring and alerting for function failures
-4. Implement rate limiting to prevent abuse
-5. Consider using a queue for high-volume email sending 
+## Function Descriptions
+
+- `sendAssignmentEmail`: Triggered whenever a new assignment is created in Firestore. It automatically sends an email to the student with assignment details and a link.
+
+- `sendReminderEmails`: Scheduled to run at 8:00 AM ET every day, this function checks for assignments due in the next 24 hours and sends reminder emails to students.
+
+- `testEmail`: HTTP function to test the email configuration.
+
+- `testAssignmentEmail`: HTTP function to manually trigger sending an assignment email. 

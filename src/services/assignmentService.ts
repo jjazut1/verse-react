@@ -27,6 +27,17 @@ export const getTeacherAssignments = async (teacherId: string): Promise<Assignme
   }
 };
 
+// Mark assignment email as sent
+export const markAssignmentEmailAsSent = async (assignmentId: string): Promise<void> => {
+  try {
+    const docRef = doc(db, 'assignments', assignmentId);
+    await updateDoc(docRef, { emailSent: true });
+  } catch (error) {
+    console.error('Error marking assignment email as sent:', error);
+    throw error;
+  }
+};
+
 // Get a single assignment by ID
 export const getAssignment = async (assignmentId: string): Promise<Assignment | null> => {
   try {

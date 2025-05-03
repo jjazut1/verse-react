@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Timestamp } from 'firebase/firestore';
-import { createAssignment } from '../services/assignmentService';
+import { createAssignment, markAssignmentEmailAsSent } from '../services/assignmentService';
 import { useAuth } from '../contexts/AuthContext';
 
 // Define GameObject interface based on Home.tsx's interface
@@ -62,7 +62,7 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
       const deadlineDate = new Date(deadline);
       deadlineDate.setHours(23, 59, 59, 999);
       
-      await createAssignment({
+      const assignmentId = await createAssignment({
         teacherId: currentUser.uid,
         studentEmail,
         gameId: game.id || '',
@@ -71,6 +71,9 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
         deadline: Timestamp.fromDate(deadlineDate),
         timesRequired,
       });
+      
+      // Mark the email as sent to prevent duplicate emails
+      await markAssignmentEmailAsSent(assignmentId);
       
       setShowSuccess(true);
       setTimeout(() => {

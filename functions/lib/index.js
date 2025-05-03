@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.automateTestEmail = exports.sendReminderEmails = exports.sendAssignmentEmail = exports.testEmail = exports.helloWorld = void 0;
+exports.testAssignmentEmail = exports.automateTestEmail = exports.sendReminderEmails = exports.sendAssignmentEmail = exports.testEmail = exports.helloWorld = void 0;
 exports.callInternalService = callInternalService;
 const params_1 = require("firebase-functions/params");
 const https_1 = require("firebase-functions/v2/https");
@@ -8,42 +8,35 @@ const firestore_1 = require("firebase-functions/v2/firestore");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
-const nodemailer = require("nodemailer");
 const google_auth_library_1 = require("google-auth-library");
 const node_fetch_1 = require("node-fetch");
+const sgMail = require("@sendgrid/mail");
 // Initialize Firebase with explicit project ID
 admin.initializeApp({
     projectId: 'verse-11f2d',
     credential: admin.credential.applicationDefault()
 });
 // Define environment parameters
-const emailUser = (0, params_1.defineString)("EMAIL_USER");
-const emailPassword = (0, params_1.defineString)("EMAIL_PASSWORD");
-// Configure nodemailer
-const getTransporter = () => {
-    return nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-            user: emailUser.value(),
-            pass: emailPassword.value(),
-        },
-    });
-};
+const sendgridApiKey = (0, params_1.defineString)("SENDGRID_API_KEY");
+const senderEmail = (0, params_1.defineString)("SENDER_EMAIL");
+// Initialize SendGrid
+sgMail.setApiKey(sendgridApiKey.value());
 // HTTP hello world function
 exports.helloWorld = (0, https_1.onRequest)((request, response) => {
     logger.info("Hello logs!", { structuredData: true });
     response.send("Hello from Verse Learning!");
 });
 // HTTP test email function
-exports.testEmail = (0, https_1.onRequest)(async (request, response) => {
+exports.testEmail = (0, https_1.onRequest)({
+    invoker: "public"
+}, async (request, response) => {
     var _a;
     try {
-        const recipientEmail = ((_a = request.query.email) === null || _a === void 0 ? void 0 : _a.toString()) || emailUser.value();
-        const transporter = getTransporter();
+        const recipientEmail = ((_a = request.query.email) === null || _a === void 0 ? void 0 : _a.toString()) || senderEmail.value();
         // Email content
-        const mailOptions = {
-            from: `"Verse Learning" <${emailUser.value()}>`,
+        const msg = {
             to: recipientEmail,
+            from: senderEmail.value(),
             subject: "Test Email from Verse Learning",
             html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -54,7 +47,7 @@ exports.testEmail = (0, https_1.onRequest)(async (request, response) => {
       `,
         };
         // Send email
-        await transporter.sendMail(mailOptions);
+        await sgMail.send(msg);
         response.send({
             success: true,
             message: "Test email sent successfully",
@@ -88,8 +81,9 @@ exports.sendAssignmentEmail = (0, firestore_1.onDocumentCreated)("assignments/{a
             assignmentId,
             studentEmail: assignment.studentEmail,
         });
+        // Skip if email has already been sent
         if (assignment.emailSent === true) {
-            logger.log("Email already sent", { assignmentId });
+            logger.log("Email already sent for this assignment", { assignmentId });
             return;
         }
         // Log dueDate/deadline for debug
@@ -114,14 +108,14 @@ exports.sendAssignmentEmail = (0, firestore_1.onDocumentCreated)("assignments/{a
             month: "long",
             day: "numeric",
         });
-        // Update the game link URL to ensure it's correctly formatted
-        // Make sure there's no trailing slash before the play path
+        // Updated: Use the assignment token to generate a direct link to the assignment page
+        // instead of the game page with token parameter
         const baseUrl = "https://r2process.com";
-        const gameLink = `${baseUrl}/play/${assignment.gameId}?token=${assignment.linkToken}`;
-        logger.log("Generated game link", { gameLink });
-        const mailOptions = {
-            from: `"Verse Learning" <${emailUser.value()}>`,
+        const assignmentLink = `${baseUrl}/assignment/${assignment.linkToken}`;
+        logger.log("Generated assignment link", { assignmentLink });
+        const msg = {
             to: assignment.studentEmail,
+            from: senderEmail.value(),
             subject: `New Assignment: ${assignment.gameTitle || assignment.gameName}`,
             html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -132,24 +126,32 @@ exports.sendAssignmentEmail = (0, firestore_1.onDocumentCreated)("assignments/{a
             <p><strong>Activity:</strong> ${assignment.gameTitle || assignment.gameName}</p>
             <p><strong>Due Date:</strong> ${formattedDate}</p>
           </div>
-          <p><a href="${gameLink}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Start Activity</a></p>
-          <p>If the button doesn't work, copy and paste this link into your browser: ${gameLink}</p>
+          <p><a href="${assignmentLink}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Start Activity</a></p>
+          <p>If the button doesn't work, copy and paste this link into your browser: ${assignmentLink}</p>
           <p>This link is unique to you. Please do not share it with others.</p>
         </div>
       `,
         };
         // Send email
-        const transporter = getTransporter();
-        await transporter.sendMail(mailOptions);
-        // Instead of trying to update Firestore directly (which is causing permission issues),
-        // just log a success message and consider the email part done
+        await sgMail.send(msg);
         logger.log("Assignment email successfully sent", {
             assignmentId,
-            email: assignment.studentEmail,
-            note: "Due to permission restrictions, the document was not updated with emailSent=true."
+            email: assignment.studentEmail
         });
-        // Important: The client side should handle updating the emailSent flag
-        // or you can set up a separate function with different permissions to do this
+        // Update the assignment document to mark email as sent
+        try {
+            await admin.firestore().collection('assignments').doc(assignmentId).update({
+                emailSent: true
+            });
+            logger.log("Assignment marked as email sent", { assignmentId });
+        }
+        catch (updateError) {
+            logger.error("Error marking assignment as sent", {
+                error: updateError instanceof Error ? updateError.message : String(updateError),
+                assignmentId
+            });
+            // Continue execution even if update fails - email was still sent
+        }
     }
     catch (error) {
         logger.error("Error sending assignment email", {
@@ -181,7 +183,6 @@ exports.sendReminderEmails = (0, scheduler_1.onSchedule)(scheduleOptions, async 
             return;
         }
         // Process each assignment
-        const transporter = getTransporter();
         const emailPromises = assignmentsSnapshot.docs.map(async (doc) => {
             const assignment = doc.data();
             // Format the due date
@@ -192,35 +193,36 @@ exports.sendReminderEmails = (0, scheduler_1.onSchedule)(scheduleOptions, async 
                 month: "long",
                 day: "numeric",
             });
-            // Construct the game link with token
-            const gameLink = `https://r2process.com/play/${assignment.gameId}?token=${assignment.linkToken}`;
+            // Construct the assignment link with token
+            const baseUrl = "https://r2process.com";
+            const assignmentLink = `${baseUrl}/assignment/${assignment.linkToken}`;
             // Email content
-            const mailOptions = {
-                from: `"Verse Learning" <${emailUser.value()}>`,
+            const msg = {
                 to: assignment.studentEmail,
-                subject: `Reminder: ${assignment.gameTitle} Due Soon`,
+                from: senderEmail.value(),
+                subject: `Reminder: ${assignment.gameTitle || assignment.gameName} Due Soon`,
                 html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2>Assignment Due Reminder</h2>
-            <p>Hello ${assignment.studentName},</p>
+            <p>Hello ${assignment.studentName || "Student"},</p>
             <p>This is a friendly reminder that you have an assignment due soon:</p>
             <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              <p><strong>Activity:</strong> ${assignment.gameTitle}</p>
+              <p><strong>Activity:</strong> ${assignment.gameTitle || assignment.gameName}</p>
               <p><strong>Due Date:</strong> ${formattedDate}</p>
             </div>
-            <p><a href="${gameLink}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Complete Activity</a></p>
+            <p><a href="${assignmentLink}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Complete Activity</a></p>
+            <p>If the button doesn't work, copy and paste this link into your browser: ${assignmentLink}</p>
           </div>
         `,
             };
             // Send email
-            return transporter
-                .sendMail(mailOptions)
-                .then(() => {
+            try {
+                await sgMail.send(msg);
                 logger.log(`Reminder email sent to ${assignment.studentEmail} for assignment ${assignment.id}`);
-            })
-                .catch((error) => {
+            }
+            catch (error) {
                 logger.error(`Error sending reminder email for assignment ${assignment.id}:`, error instanceof Error ? error.message : "Unknown error");
-            });
+            }
         });
         await Promise.all(emailPromises);
         logger.log(`Processed ${assignmentsSnapshot.size} reminder emails`);
@@ -290,6 +292,77 @@ exports.automateTestEmail = (0, https_1.onRequest)(async (req, res) => {
         else {
             res.status(500).send({ error: String(error) });
         }
+    }
+});
+// HTTP endpoint to manually send an assignment email for testing
+exports.testAssignmentEmail = (0, https_1.onRequest)({
+    invoker: "public"
+}, async (request, response) => {
+    var _a;
+    try {
+        const assignmentId = request.query.assignmentId;
+        if (!assignmentId) {
+            response.status(400).send({ error: "Missing assignmentId parameter" });
+            return;
+        }
+        // Get the assignment data
+        const assignmentDoc = await admin.firestore().collection("assignments").doc(assignmentId).get();
+        if (!assignmentDoc.exists) {
+            response.status(404).send({ error: "Assignment not found" });
+            return;
+        }
+        const assignment = assignmentDoc.data();
+        // Format the due date
+        const rawDueDate = (_a = assignment.dueDate) !== null && _a !== void 0 ? _a : assignment.deadline;
+        if (!rawDueDate || typeof rawDueDate.toDate !== "function") {
+            response.status(400).send({ error: "Invalid deadline format in assignment" });
+            return;
+        }
+        const dueDate = rawDueDate.toDate();
+        const formattedDate = dueDate.toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+        });
+        // Generate assignment link
+        const baseUrl = "https://r2process.com";
+        const assignmentLink = `${baseUrl}/assignment/${assignment.linkToken}`;
+        // Create email content
+        const msg = {
+            to: assignment.studentEmail,
+            from: senderEmail.value(),
+            subject: `New Assignment: ${assignment.gameTitle || assignment.gameName}`,
+            html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>New Assignment from Verse Learning</h2>
+          <p>Hello ${assignment.studentName || "Student"},</p>
+          <p>You have been assigned a new learning activity:</p>
+          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <p><strong>Activity:</strong> ${assignment.gameTitle || assignment.gameName}</p>
+            <p><strong>Due Date:</strong> ${formattedDate}</p>
+          </div>
+          <p><a href="${assignmentLink}" style="display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Start Activity</a></p>
+          <p>If the button doesn't work, copy and paste this link into your browser: ${assignmentLink}</p>
+          <p>This link is unique to you. Please do not share it with others.</p>
+        </div>
+      `,
+        };
+        // Send email
+        await sgMail.send(msg);
+        // Respond with success
+        response.send({
+            success: true,
+            message: "Test assignment email sent successfully",
+            sentTo: assignment.studentEmail,
+        });
+    }
+    catch (error) {
+        logger.error("Error sending test assignment email:", error);
+        response.status(500).send({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+        });
     }
 });
 //# sourceMappingURL=index.js.map
