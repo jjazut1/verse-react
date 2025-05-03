@@ -163,10 +163,21 @@ export const getStudentAttempts = async (studentId: string, assignmentId: string
 };
 
 // Create a new attempt
-export const createAttempt = async (attemptData: Omit<Attempt, 'id'>): Promise<string> => {
+export const createAttempt = async (assignmentId: string, attemptData: {
+  duration: number;
+  score?: number;
+  results?: any;
+  studentEmail: string;
+  studentName: string;
+}): Promise<string> => {
   try {
     const docRef = await addDoc(collection(db, 'attempts'), {
-      ...attemptData,
+      assignmentId,
+      studentEmail: attemptData.studentEmail,
+      studentName: attemptData.studentName,
+      duration: attemptData.duration,
+      score: attemptData.score,
+      results: attemptData.results,
       timestamp: Timestamp.now(),
     });
     return docRef.id;

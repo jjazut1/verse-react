@@ -21,6 +21,8 @@ export interface Assignment {
 export interface Attempt {
   id?: string;
   assignmentId: string;
+  studentEmail: string;
+  studentName: string;
   timestamp: Timestamp;
   score?: number;
   duration: number;

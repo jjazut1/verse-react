@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getAssignmentByToken, createAttempt } from '../services/assignmentService';
+import { getAssignmentByToken, createAttempt, updateAssignment } from '../services/assignmentService';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { Assignment } from '../types';
@@ -102,10 +102,28 @@ const AssignmentDetails: React.FC = () => {
       const endTime = new Date();
       const durationInSeconds = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
       
+      // Use the assignment's studentEmail and the provided studentName
       await createAttempt(assignment.id || '', {
         duration: durationInSeconds,
         score: results.score,
-        results: results
+        results: results,
+        studentEmail: assignment.studentEmail, // Use the email from the assignment
+        studentName: studentName || 'Unknown Student' // Use the name entered by the student or a default
+      });
+      
+      // Update the assignment status if needed
+      if (assignment.status === 'assigned') {
+        await updateAssignment(assignment.id || '', { status: 'started' });
+      }
+      
+      // Update the completedCount and potentially the status
+      const newCompletedCount = (assignment.completedCount || 0) + 1;
+      const isNowCompleted = newCompletedCount >= assignment.timesRequired;
+      
+      await updateAssignment(assignment.id || '', { 
+        completedCount: newCompletedCount,
+        lastCompletedAt: Timestamp.now(),
+        status: isNowCompleted ? 'completed' : assignment.status
       });
       
       setIsPlaying(false);
@@ -185,6 +203,20 @@ const AssignmentDetails: React.FC = () => {
       }}>
         Before You Start
       </h2>
+      
+      {assignment && (
+        <div style={{ 
+          marginBottom: 'var(--spacing-4)',
+          backgroundColor: 'var(--color-info-50)',
+          padding: 'var(--spacing-3)',
+          borderRadius: 'var(--border-radius-sm)',
+          fontSize: 'var(--font-size-sm)',
+          color: 'var(--color-info-700)'
+        }}>
+          <p>You're authenticated as: <strong>{assignment.studentEmail}</strong></p>
+          <p style={{ marginTop: 'var(--spacing-2)' }}>This unique link was sent specifically to you.</p>
+        </div>
+      )}
       
       <div style={{ marginBottom: 'var(--spacing-4)' }}>
         <label 
