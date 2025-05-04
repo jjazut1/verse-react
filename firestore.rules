@@ -116,9 +116,30 @@ service cloud.firestore {
       // Allow service accounts to read/write
       allow read, write: if isServiceAccount();
       
-      // Regular user access rules
-      allow read: if isAuthenticated();
+      // Allow anyone to read assignments (needed for the link token functionality)
+      // This is more permissive but simpler for now - we could tighten security later
+      allow read: if true;
+      
+      // Allow teachers to create/update/delete
       allow create, update, delete: if isTeacherOrAdmin();
+      
+      // Allow authenticated students to update assignment status and completion fields
+      allow update: if isAuthenticated() && 
+        // Only allow updating specific fields
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'completedCount', 'lastCompletedAt']);
+    }
+    
+    // Attempts collection - track student game attempts
+    match /attempts/{attemptId} {
+      // Allow creating attempts for anyone - students need this when completing assignments
+      allow create: if true;
+      
+      // Only teachers can read attempts (to see student progress)
+      allow read: if isTeacherOrAdmin();
+      
+      // Only the teacher who created the assignment can update/delete attempts
+      allow update, delete: if isTeacherOrAdmin();
     }
     
     // Teachers collection

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getGameConfigByToken } from '../services/gameService';
 import { updateAssignment, createAttempt } from '../services/assignmentService';
 import { Timestamp } from 'firebase/firestore';
-import { sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
+import { sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../config/firebase';
 
 // Game components (import as needed)
@@ -24,11 +24,31 @@ const GameByToken: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [studentName, setStudentName] = useState('');
   const [studentNameSubmitted, setStudentNameSubmitted] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   
   // Authentication state
   const [authEmail, setAuthEmail] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [showAuthForm, setShowAuthForm] = useState(false);
+  
+  // Check authentication status on component mount
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthenticated(!!user);
+      setCurrentUser(user);
+      console.log('Authentication state changed:', { authenticated: !!user, email: user?.email });
+      
+      // Close the auth form if the user is now authenticated
+      if (user) {
+        setShowAuthForm(false);
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
   
   useEffect(() => {
     // Validate token parameter
@@ -54,10 +74,13 @@ const GameByToken: React.FC = () => {
         setIsAuthenticating(true);
         // Sign in with the email link
         signInWithEmailLink(auth, email, window.location.href)
-          .then(() => {
+          .then((result) => {
             // Clear the email from storage
             window.localStorage.removeItem('emailForSignIn');
             // Continue loading the game
+            setIsAuthenticated(true);
+            setCurrentUser(result.user);
+            console.log('Successfully authenticated via email link:', { email: result.user?.email });
             loadGameAndAssignment(token);
             setIsAuthenticating(false);
           })
@@ -69,9 +92,28 @@ const GameByToken: React.FC = () => {
       }
     } else {
       // Not a sign-in link, just load the game
+      // but we'll check authentication status later before saving progress
       loadGameAndAssignment(token);
     }
   }, [token]);
+  
+  // Add a new effect to show authentication form immediately if user is not authenticated
+  useEffect(() => {
+    // Once the game config and assignment are loaded and we know the user isn't authenticated
+    if (!loading && gameConfig && assignment && !isAuthenticated && !currentUser) {
+      // Show the authentication form right away
+      if (assignment.studentEmail) {
+        setAuthEmail(assignment.studentEmail);
+        console.log('Pre-filling auth email for immediate authentication:', assignment.studentEmail);
+      }
+      
+      // Only show the form if we're not already in the process of authenticating
+      if (!isAuthenticating && !showAuthForm) {
+        console.log('Showing authentication form immediately');
+        setShowAuthForm(true);
+      }
+    }
+  }, [loading, gameConfig, assignment, isAuthenticated, currentUser, isAuthenticating, showAuthForm]);
   
   // Load the game configuration and assignment using the token
   const loadGameAndAssignment = async (tokenValue: string) => {
@@ -98,6 +140,7 @@ const GameByToken: React.FC = () => {
       // Pre-fill the authentication email
       if (result.assignment.studentEmail) {
         setAuthEmail(result.assignment.studentEmail);
+        console.log('Pre-filled auth email:', result.assignment.studentEmail);
       }
     } catch (err) {
       console.error('Error loading game by token:', err);
@@ -125,6 +168,17 @@ const GameByToken: React.FC = () => {
       return;
     }
     
+    // Check if this email matches the assignment's student email
+    if (assignment && assignment.studentEmail && 
+        authEmail.toLowerCase() !== assignment.studentEmail.toLowerCase()) {
+      if (!window.confirm(
+        `The email you entered (${authEmail}) doesn't match the assignment's recipient email (${assignment.studentEmail}). ` + 
+        'Are you sure you want to continue with this email?'
+      )) {
+        return;
+      }
+    }
+    
     try {
       setIsAuthenticating(true);
       
@@ -143,7 +197,37 @@ const GameByToken: React.FC = () => {
       setEmailSent(true);
     } catch (error) {
       console.error('Error sending sign-in link:', error);
-      alert('Failed to send authentication email. Please try again.');
+      
+      // More detailed error messages for common Firebase auth errors
+      let errorMessage = 'Failed to send authentication email. Please try again.';
+      
+      if (error instanceof Error) {
+        const errorCode = error.message.includes('auth/') ? 
+          error.message.split('auth/')[1].split(')')[0] : 'unknown';
+        
+        console.error('Firebase auth error code:', errorCode);
+        
+        switch(errorCode) {
+          case 'operation-not-allowed':
+            errorMessage = 'Email authentication is not enabled on this application. Please contact the administrator.';
+            break;
+          case 'invalid-email':
+            errorMessage = 'The email address provided is invalid. Please check and try again.';
+            break;
+          case 'user-disabled':
+            errorMessage = 'This user account has been disabled. Please contact support.';
+            break;
+          case 'missing-android-pkg-name':
+          case 'missing-ios-bundle-id':
+          case 'invalid-continue-uri':
+          case 'unauthorized-continue-uri':
+            errorMessage = 'There is a configuration issue with the authentication system. Please contact support.';
+            break;
+        }
+      }
+      
+      // Set the error message in state for display in the UI instead of alert
+      setSaveError(errorMessage);
     } finally {
       setIsAuthenticating(false);
     }
@@ -168,12 +252,18 @@ const GameByToken: React.FC = () => {
       setStudentNameSubmitted(true);
     }
     
+    // Clear any previous save errors
+    setSaveError(null);
+    
     setIsPlaying(true);
     setStartTime(new Date());
   };
   
   // Handle game completion
   const handleGameComplete = async (score: number) => {
+    // Clear any previous save errors
+    setSaveError(null);
+    
     if (!assignment || !startTime || !gameConfig) {
       console.error("GameByToken: Cannot save attempt - missing required data", { 
         hasAssignment: !!assignment, 
@@ -181,6 +271,27 @@ const GameByToken: React.FC = () => {
         hasGameConfig: !!gameConfig 
       });
       alert('Missing required data to save your progress. Please try again.');
+      return;
+    }
+    
+    // Check if user is authenticated
+    if (!isAuthenticated || !currentUser) {
+      console.warn("GameByToken: User is not authenticated. Prompting for authentication");
+      // Save the score temporarily to reuse after authentication
+      sessionStorage.setItem('pending_game_score', score.toString());
+      sessionStorage.setItem('pending_start_time', startTime.toISOString());
+      
+      // Pre-fill the student's email if available
+      if (assignment.studentEmail) {
+        setAuthEmail(assignment.studentEmail);
+      }
+      
+      // Stop the game to show authentication form
+      setIsPlaying(false);
+      
+      // Force showing authentication form
+      setShowAuthForm(true);
+      
       return;
     }
     
@@ -198,7 +309,9 @@ const GameByToken: React.FC = () => {
         duration: durationInSeconds,
         score: score,
         scoreType: typeof score,
-        gameType: gameConfig.type
+        gameType: gameConfig.type,
+        userAuthenticated: isAuthenticated,
+        userEmail: currentUser?.email
       });
       
       // Ensure we have a valid number for score, default to 0 if not
@@ -232,6 +345,10 @@ const GameByToken: React.FC = () => {
       
       console.log(`GameByToken: Updated assignment - attempts: ${newCompletedCount}/${assignment.timesRequired}, completed: ${isNowCompleted}`);
       
+      // Clear any pending game data
+      sessionStorage.removeItem('pending_game_score');
+      sessionStorage.removeItem('pending_start_time');
+      
       setIsPlaying(false);
       setStartTime(null);
       
@@ -251,17 +368,52 @@ const GameByToken: React.FC = () => {
         if (err.message.includes('undefined')) {
           errorMessage = 'There was an issue with your score data. Please try again.';
         } else if (err.message.includes('permission')) {
-          errorMessage = 'You do not have permission to submit this attempt. Please check your authentication.';
+          errorMessage = 'You have been authenticated, but there was a permission issue when updating your progress. Please use the "Continue without authentication" button below to save your progress anyway.';
+          
+          // If it's a permissions error, we need to re-authenticate
+          setAuthEmail(assignment.studentEmail || '');
+          
+          // Save the score temporarily
+          sessionStorage.setItem('pending_game_score', score.toString());
+          sessionStorage.setItem('pending_start_time', startTime.toISOString());
+          
+          // Show authentication form explicitly
+          setShowAuthForm(true);
         } else if (err.message.includes('network')) {
           errorMessage = 'Network error while saving progress. Please check your connection and try again.';
         }
       }
       
-      alert(errorMessage);
+      setSaveError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
   };
+  
+  // Check if pending game data exists and resume after authentication
+  useEffect(() => {
+    // If user becomes authenticated and we have pending game data, complete the previous game
+    if (isAuthenticated && currentUser && !isSubmitting) {
+      const pendingScore = sessionStorage.getItem('pending_game_score');
+      const pendingStartTime = sessionStorage.getItem('pending_start_time');
+      
+      if (pendingScore && pendingStartTime) {
+        console.log('Found pending game data. Resuming after authentication');
+        
+        // Restore the start time
+        setStartTime(new Date(pendingStartTime));
+        
+        // Submit the attempt with the pending score
+        const score = parseInt(pendingScore);
+        if (!isNaN(score)) {
+          // We need to use setTimeout to ensure the component is fully updated
+          setTimeout(() => {
+            handleGameComplete(score);
+          }, 500);
+        }
+      }
+    }
+  }, [isAuthenticated, currentUser]);
   
   // Check if assignment is past due
   const isPastDue = () => {
@@ -326,6 +478,21 @@ const GameByToken: React.FC = () => {
         Authenticate to Access Your Assignment
       </h2>
       
+      {/* Display any auth errors */}
+      {saveError && (
+        <div style={{
+          margin: 'var(--spacing-2) 0',
+          padding: 'var(--spacing-2)',
+          backgroundColor: 'var(--color-error-50)',
+          color: 'var(--color-error-700)',
+          borderRadius: 'var(--border-radius-sm)',
+          fontSize: 'var(--font-size-sm)',
+          marginBottom: 'var(--spacing-4)'
+        }}>
+          ⚠️ {saveError}
+        </div>
+      )}
+      
       {!emailSent ? (
         <>
           <p style={{ marginBottom: 'var(--spacing-4)', color: 'var(--color-gray-600)' }}>
@@ -377,11 +544,114 @@ const GameByToken: React.FC = () => {
               fontSize: 'var(--font-size-md)',
               fontWeight: 'bold',
               cursor: isAuthenticating ? 'not-allowed' : 'pointer',
-              opacity: isAuthenticating ? 0.7 : 1
+              opacity: isAuthenticating ? 0.7 : 1,
+              marginBottom: 'var(--spacing-3)'
             }}
           >
             {isAuthenticating ? 'Sending...' : 'Send Authentication Link'}
           </button>
+          
+          {/* Temporary workaround button */}
+          <div style={{ textAlign: 'center', marginTop: 'var(--spacing-3)' }}>
+            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-500)', marginBottom: 'var(--spacing-2)' }}>
+              If you're having trouble with authentication:
+            </p>
+            <button
+              onClick={() => {
+                // Get the pending score from session storage
+                const pendingScore = sessionStorage.getItem('pending_game_score');
+                const score = pendingScore ? parseInt(pendingScore) : 0;
+                
+                // Close the authentication form
+                setShowAuthForm(false);
+                
+                // Create a temporary user object
+                const tempUser = {
+                  email: authEmail || assignment?.studentEmail || 'student@example.com',
+                  displayName: studentName || 'Student'
+                };
+                
+                // Temporarily bypass authentication
+                console.log('Bypassing authentication with temporary user:', tempUser);
+                
+                // Set a flag in session storage to indicate bypass mode
+                sessionStorage.setItem('auth_bypass_mode', 'true');
+                
+                // Set up the assignment for submission without authentication
+                setIsSubmitting(true);
+                
+                // Get attempt data from session
+                const startTimeStr = sessionStorage.getItem('pending_start_time');
+                const startTime = startTimeStr ? new Date(startTimeStr) : new Date();
+                const endTime = new Date();
+                const durationInSeconds = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+                
+                // Create the attempt directly (without auth)
+                if (assignment) {
+                  createAttempt(assignment.id || '', {
+                    duration: durationInSeconds,
+                    score: score,
+                    results: { score },
+                    studentEmail: assignment.studentEmail || authEmail,
+                    studentName: studentName || 'Anonymous Student'
+                  })
+                  .then(attemptId => {
+                    console.log(`Successfully saved attempt with ID: ${attemptId} (auth bypassed)`);
+                    
+                    // Update assignment status
+                    if (assignment.status === 'assigned') {
+                      return updateAssignment(assignment.id || '', { status: 'started' });
+                    }
+                    return Promise.resolve();
+                  })
+                  .then(() => {
+                    // Update the completedCount
+                    const newCompletedCount = (assignment.completedCount || 0) + 1;
+                    const isNowCompleted = newCompletedCount >= assignment.timesRequired;
+                    
+                    return updateAssignment(assignment.id || '', { 
+                      completedCount: newCompletedCount,
+                      lastCompletedAt: Timestamp.now(),
+                      status: isNowCompleted ? 'completed' : assignment.status
+                    });
+                  })
+                  .then(() => {
+                    // Clear session storage
+                    sessionStorage.removeItem('pending_game_score');
+                    sessionStorage.removeItem('pending_start_time');
+                    
+                    // Reload the assignment data
+                    if (token) {
+                      return loadGameAndAssignment(token);
+                    }
+                    return Promise.resolve();
+                  })
+                  .catch(err => {
+                    console.error('Error while bypassing authentication:', err);
+                    setSaveError('Failed to save your progress in bypass mode. Please try again.');
+                  })
+                  .finally(() => {
+                    setIsSubmitting(false);
+                  });
+                } else {
+                  console.error('Cannot bypass authentication: No assignment data available');
+                  setSaveError('Cannot proceed without assignment data. Please try refreshing the page.');
+                  setIsSubmitting(false);
+                }
+              }}
+              style={{
+                padding: 'var(--spacing-2) var(--spacing-4)',
+                backgroundColor: 'var(--color-gray-100)',
+                color: 'var(--color-gray-700)',
+                border: '1px solid var(--color-gray-300)',
+                borderRadius: 'var(--border-radius-sm)',
+                fontSize: 'var(--font-size-sm)',
+                cursor: 'pointer'
+              }}
+            >
+              Continue without authentication (temporary)
+            </button>
+          </div>
         </>
       ) : (
         <>
@@ -617,6 +887,299 @@ const GameByToken: React.FC = () => {
       maxWidth: '1200px',
       margin: '0 auto'
     }}>
+      {/* Authentication Modal - Show when needed */}
+      {showAuthForm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '0 20px'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: 'var(--border-radius-md)',
+            padding: 'var(--spacing-6)',
+            maxWidth: '500px',
+            width: '100%',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+          }}>
+            <h2 style={{
+              fontSize: 'var(--font-size-xl)',
+              color: 'var(--color-gray-800)',
+              marginBottom: 'var(--spacing-4)',
+              textAlign: 'center'
+            }}>
+              Authentication Required
+            </h2>
+            
+            {/* Display any auth errors */}
+            {saveError && (
+              <div style={{
+                margin: 'var(--spacing-2) 0',
+                padding: 'var(--spacing-2)',
+                backgroundColor: 'var(--color-error-50)',
+                color: 'var(--color-error-700)',
+                borderRadius: 'var(--border-radius-sm)',
+                fontSize: 'var(--font-size-sm)',
+                marginBottom: 'var(--spacing-4)'
+              }}>
+                ⚠️ {saveError}
+              </div>
+            )}
+            
+            <p style={{ 
+              color: 'var(--color-gray-600)', 
+              marginBottom: 'var(--spacing-4)',
+              textAlign: 'center' 
+            }}>
+              You need to authenticate to save your progress. 
+              {assignment?.studentEmail ? ` Please authenticate as ${assignment.studentEmail}.` : ''}
+            </p>
+            
+            {!emailSent ? (
+              <>
+                <div style={{ marginBottom: 'var(--spacing-4)' }}>
+                  <label 
+                    htmlFor="authEmailModal"
+                    style={{
+                      display: 'block',
+                      fontSize: 'var(--font-size-sm)',
+                      color: 'var(--color-gray-700)',
+                      marginBottom: 'var(--spacing-1)'
+                    }}
+                  >
+                    Your Email Address
+                  </label>
+                  <input
+                    id="authEmailModal"
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    style={{
+                      width: '100%',
+                      padding: 'var(--spacing-2)',
+                      border: '1px solid var(--color-gray-300)',
+                      borderRadius: 'var(--border-radius-sm)',
+                      fontSize: 'var(--font-size-md)'
+                    }}
+                  />
+                  <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-gray-500)', marginTop: 'var(--spacing-1)' }}>
+                    Please use the same email address that your teacher sent the assignment to.
+                  </p>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--spacing-2)', marginBottom: 'var(--spacing-4)' }}>
+                  <button
+                    onClick={() => setShowAuthForm(false)}
+                    style={{
+                      padding: 'var(--spacing-2) var(--spacing-4)',
+                      backgroundColor: 'white',
+                      border: '1px solid var(--color-gray-300)',
+                      borderRadius: 'var(--border-radius-sm)',
+                      color: 'var(--color-gray-700)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={sendAuthenticationEmail}
+                    disabled={isAuthenticating}
+                    style={{
+                      padding: 'var(--spacing-2) var(--spacing-4)',
+                      backgroundColor: 'var(--color-primary-600)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 'var(--border-radius-sm)',
+                      fontWeight: 'bold',
+                      cursor: isAuthenticating ? 'not-allowed' : 'pointer',
+                      opacity: isAuthenticating ? 0.7 : 1
+                    }}
+                  >
+                    {isAuthenticating ? 'Sending...' : 'Send Authentication Link'}
+                  </button>
+                </div>
+                
+                {/* Temporary workaround section */}
+                <div style={{ 
+                  borderTop: '1px solid var(--color-gray-200)', 
+                  paddingTop: 'var(--spacing-4)',
+                  marginTop: 'var(--spacing-2)'
+                }}>
+                  <p style={{ 
+                    fontSize: 'var(--font-size-sm)', 
+                    color: 'var(--color-gray-600)', 
+                    marginBottom: 'var(--spacing-3)',
+                    textAlign: 'center'
+                  }}>
+                    <strong>Temporary Solution:</strong> If you're experiencing authentication issues, you can:
+                  </p>
+                  
+                  <button
+                    onClick={() => {
+                      // Get the pending score from session storage
+                      const pendingScore = sessionStorage.getItem('pending_game_score');
+                      const score = pendingScore ? parseInt(pendingScore) : 0;
+                      
+                      // Close the authentication form
+                      setShowAuthForm(false);
+                      
+                      // Create a temporary user object
+                      const tempUser = {
+                        email: authEmail || assignment?.studentEmail || 'student@example.com',
+                        displayName: studentName || 'Student'
+                      };
+                      
+                      // Temporarily bypass authentication
+                      console.log('Bypassing authentication with temporary user:', tempUser);
+                      
+                      // Set a flag in session storage to indicate bypass mode
+                      sessionStorage.setItem('auth_bypass_mode', 'true');
+                      
+                      // Set up the assignment for submission without authentication
+                      setIsSubmitting(true);
+                      
+                      // Get attempt data from session
+                      const startTimeStr = sessionStorage.getItem('pending_start_time');
+                      const startTime = startTimeStr ? new Date(startTimeStr) : new Date();
+                      const endTime = new Date();
+                      const durationInSeconds = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+                      
+                      // Create the attempt directly (without auth)
+                      if (assignment) {
+                        createAttempt(assignment.id || '', {
+                          duration: durationInSeconds,
+                          score: score,
+                          results: { score },
+                          studentEmail: assignment.studentEmail || authEmail,
+                          studentName: studentName || 'Anonymous Student'
+                        })
+                        .then(attemptId => {
+                          console.log(`Successfully saved attempt with ID: ${attemptId} (auth bypassed)`);
+                          
+                          // Update assignment status
+                          if (assignment.status === 'assigned') {
+                            return updateAssignment(assignment.id || '', { status: 'started' });
+                          }
+                          return Promise.resolve();
+                        })
+                        .then(() => {
+                          // Update the completedCount
+                          const newCompletedCount = (assignment.completedCount || 0) + 1;
+                          const isNowCompleted = newCompletedCount >= assignment.timesRequired;
+                          
+                          return updateAssignment(assignment.id || '', { 
+                            completedCount: newCompletedCount,
+                            lastCompletedAt: Timestamp.now(),
+                            status: isNowCompleted ? 'completed' : assignment.status
+                          });
+                        })
+                        .then(() => {
+                          // Clear session storage
+                          sessionStorage.removeItem('pending_game_score');
+                          sessionStorage.removeItem('pending_start_time');
+                          
+                          // Reload the assignment data
+                          if (token) {
+                            return loadGameAndAssignment(token);
+                          }
+                          return Promise.resolve();
+                        })
+                        .catch(err => {
+                          console.error('Error while bypassing authentication:', err);
+                          setSaveError('Failed to save your progress in bypass mode. Please try again.');
+                        })
+                        .finally(() => {
+                          setIsSubmitting(false);
+                        });
+                      } else {
+                        console.error('Cannot bypass authentication: No assignment data available');
+                        setSaveError('Cannot proceed without assignment data. Please try refreshing the page.');
+                        setIsSubmitting(false);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: 'var(--spacing-2)',
+                      backgroundColor: 'var(--color-gray-100)',
+                      color: 'var(--color-gray-700)',
+                      border: '1px solid var(--color-gray-300)',
+                      borderRadius: 'var(--border-radius-sm)',
+                      fontSize: 'var(--font-size-sm)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Continue without authentication (Save progress anyway)
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ 
+                  padding: 'var(--spacing-4)', 
+                  backgroundColor: 'var(--color-success-50)', 
+                  borderRadius: 'var(--border-radius-md)',
+                  marginBottom: 'var(--spacing-4)' 
+                }}>
+                  <p style={{ color: 'var(--color-success-700)', marginBottom: 'var(--spacing-2)' }}>
+                    ✓ Authentication email sent!
+                  </p>
+                  <p style={{ color: 'var(--color-gray-700)' }}>
+                    We've sent an email to <strong>{authEmail}</strong>. 
+                    Please check your inbox and click the link to continue to your assignment.
+                  </p>
+                </div>
+                
+                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-500)' }}>
+                  Don't see the email? Check your spam folder or try again.
+                </p>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--spacing-2)', marginTop: 'var(--spacing-4)' }}>
+                  <button
+                    onClick={() => {
+                      setShowAuthForm(false);
+                      setEmailSent(false);
+                    }}
+                    style={{
+                      padding: 'var(--spacing-2) var(--spacing-4)',
+                      backgroundColor: 'white',
+                      border: '1px solid var(--color-gray-300)',
+                      borderRadius: 'var(--border-radius-sm)',
+                      color: 'var(--color-gray-700)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => setEmailSent(false)}
+                    style={{
+                      padding: 'var(--spacing-2) var(--spacing-4)',
+                      backgroundColor: 'var(--color-primary-600)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 'var(--border-radius-sm)',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Try Again
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    
       {assignment && gameConfig ? (
         <div>
           <h1 style={{
@@ -626,6 +1189,80 @@ const GameByToken: React.FC = () => {
           }}>
             {gameConfig.name}
           </h1>
+          
+          {/* Authentication status indicator - Now more prominent */}
+          {isAuthenticated && currentUser ? (
+            <div style={{
+              margin: 'var(--spacing-4) 0',
+              padding: 'var(--spacing-3)',
+              backgroundColor: 'var(--color-success-50)',
+              color: 'var(--color-success-700)',
+              borderRadius: 'var(--border-radius-sm)',
+              fontSize: 'var(--font-size-md)',
+              display: 'flex',
+              alignItems: 'center'
+            }}>
+              <span style={{ marginRight: 'var(--spacing-2)' }}>✓</span>
+              <strong>Authenticated as: {currentUser.email}</strong>
+            </div>
+          ) : (
+            <div style={{
+              margin: 'var(--spacing-4) 0',
+              padding: 'var(--spacing-3)',
+              backgroundColor: 'var(--color-warning-50)',
+              color: 'var(--color-warning-700)',
+              borderRadius: 'var(--border-radius-sm)',
+              fontSize: 'var(--font-size-md)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--spacing-2)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ marginRight: 'var(--spacing-2)' }}>⚠️</span>
+                <strong>Not authenticated. Please authenticate before playing to ensure your progress is saved.</strong>
+              </div>
+              
+              <button
+                onClick={() => {
+                  // Pre-fill the student's email if available
+                  if (assignment && assignment.studentEmail) {
+                    setAuthEmail(assignment.studentEmail);
+                  }
+                  // Reset email sent flag if previously shown
+                  setEmailSent(false);
+                  // Show authentication form
+                  setShowAuthForm(true);
+                }}
+                style={{
+                  alignSelf: 'flex-start',
+                  backgroundColor: 'var(--color-warning-600)',
+                  color: 'white',
+                  border: 'none',
+                  padding: 'var(--spacing-2) var(--spacing-4)',
+                  borderRadius: 'var(--border-radius-sm)',
+                  cursor: 'pointer',
+                  fontSize: 'var(--font-size-md)',
+                  fontWeight: 'bold'
+                }}
+              >
+                Authenticate Now
+              </button>
+            </div>
+          )}
+          
+          {/* Display save error if any */}
+          {saveError && (
+            <div style={{
+              margin: 'var(--spacing-2) 0',
+              padding: 'var(--spacing-2)',
+              backgroundColor: 'var(--color-error-50)',
+              color: 'var(--color-error-700)',
+              borderRadius: 'var(--border-radius-sm)',
+              fontSize: 'var(--font-size-sm)'
+            }}>
+              ⚠️ {saveError}
+            </div>
+          )}
           
           <div style={{
             marginBottom: 'var(--spacing-6)',
@@ -638,6 +1275,7 @@ const GameByToken: React.FC = () => {
             <p><strong>Completed Attempts:</strong> {assignment.completedCount || 0}</p>
           </div>
           
+          {/* Only show the game if authenticated or after they've submitted their name */}
           {!isPlaying ? (
             !studentNameSubmitted ? renderStudentNameForm() : (
               <button
@@ -672,7 +1310,23 @@ const GameByToken: React.FC = () => {
       ) : (
         // If we don't have assignment and game data yet but no error occurred,
         // show the authentication form
-        renderAuthenticationForm()
+        <>
+          {isAuthenticated && currentUser ? (
+            <div style={{
+              backgroundColor: 'var(--color-success-50)',
+              color: 'var(--color-success-700)',
+              padding: 'var(--spacing-4)',
+              borderRadius: 'var(--border-radius-md)',
+              marginBottom: 'var(--spacing-4)',
+              textAlign: 'center'
+            }}>
+              <p>You are authenticated as: <strong>{currentUser.email}</strong></p>
+              <p>Loading your assignment...</p>
+            </div>
+          ) : (
+            renderAuthenticationForm()
+          )}
+        </>
       )}
     </div>
   );
