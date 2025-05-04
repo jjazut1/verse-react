@@ -62,7 +62,7 @@ const AssignmentCard: React.FC<AssignmentCardProps> = ({
   
   // Get the assignment link
   const getAssignmentLink = () => {
-    return `${window.location.origin}/assignment/${assignment.linkToken}`;
+    return `${window.location.origin}/play?token=${assignment.linkToken}`;
   };
   
   // Copy link to clipboard

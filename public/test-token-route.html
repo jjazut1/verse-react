@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token Route Test</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    button {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 20px;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .note {
+      background-color: #f4f4f5;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 20px;
+      font-size: 14px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>Token Route Tester</h1>
+  <p>This page helps test direct access to token-based routes.</p>
+  
+  <div>
+    <label for="token">Enter Token:</label>
+    <input type="text" id="token" placeholder="e.g., 7411130a-1fe6-4dc1-86ad-abf1bff1cf66">
+  </div>
+  
+  <button onclick="goToPlayRoute()">Go to /play?token=...</button>
+  <button onclick="goToAssignmentRoute()">Go to /assignment/:token (Legacy)</button>
+  
+  <div class="note">
+    <p>Notes:</p>
+    <ul>
+      <li>This page helps diagnose direct access to token routes</li>
+      <li>It simulates what happens when a user clicks a link from an email</li>
+      <li>The app now uses query parameters (?token=) instead of path parameters (/token)</li>
+      <li>The /assignment/:token route should redirect to /play?token=...</li>
+    </ul>
+  </div>
+
+  <script>
+    function goToPlayRoute() {
+      const token = document.getElementById('token').value.trim();
+      if (!token) {
+        alert('Please enter a token');
+        return;
+      }
+      window.location.href = `/play?token=${token}`;
+    }
+    
+    function goToAssignmentRoute() {
+      const token = document.getElementById('token').value.trim();
+      if (!token) {
+        alert('Please enter a token');
+        return;
+      }
+      window.location.href = `/assignment/${token}`;
+    }
+  </script>
+</body>
+</html> 

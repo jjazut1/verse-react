@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { resolve } from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -18,7 +19,14 @@ export default defineConfig(({ mode }) => {
       sourcemap: true,
       // Skip TypeScript type checking to allow build despite TS errors
       minify: true,
-      target: 'es2015'
+      target: 'es2015',
+      // Copy token-redirect.html to dist
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, 'index.html'),
+          tokenRedirect: resolve(__dirname, 'public/token-redirect.html')
+        }
+      }
     },
     define: {
       // Make all environment variables available

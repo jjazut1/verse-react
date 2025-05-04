@@ -10,11 +10,12 @@
   "scripts": {
     "dev": "vite",
     "dev:3000": "npx kill-port 3000 && vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/copy-token-redirect.js",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "vercel-build": "npm run build",
-    "test": "vitest"
+    "test": "vitest",
+    "deploy": "npm run build && firebase deploy"
   },
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",

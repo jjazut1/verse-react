@@ -2,6 +2,56 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Route handling script - must come first for direct access to work properly -->
+    <script>
+      // Handle token routes in various formats immediately
+      (function() {
+        try {
+          // Store original path for debugging
+          window.__INITIAL_PATH__ = window.location.pathname;
+          
+          // Get token from query params
+          const urlParams = new URLSearchParams(window.location.search);
+          const token = urlParams.get('token');
+          
+          // If we already have a token in the query params, store it
+          if (token) {
+            console.log('Token found in query params:', token);
+            sessionStorage.setItem('route_token', token);
+            sessionStorage.setItem('route_path', window.location.pathname + window.location.search);
+          }
+          // Handle legacy path parameter format
+          else if (window.location.pathname.startsWith('/play/')) {
+            const pathToken = window.location.pathname.split('/').pop();
+            console.log('Converting path parameter token to query parameter:', pathToken);
+            if (pathToken) {
+              // Store token for routing
+              sessionStorage.setItem('route_token', pathToken);
+              sessionStorage.setItem('route_path', window.location.pathname);
+              
+              // Immediately redirect to the new format
+              window.location.href = '/play?token=' + pathToken;
+            }
+          }
+          // Handle assignment path parameter format
+          else if (window.location.pathname.startsWith('/assignment/')) {
+            const pathToken = window.location.pathname.split('/').pop();
+            console.log('Converting assignment path parameter to play route:', pathToken);
+            if (pathToken) {
+              // Store token for routing
+              sessionStorage.setItem('route_token', pathToken);
+              sessionStorage.setItem('route_path', window.location.pathname);
+              
+              // Immediately redirect to the play route with query parameter
+              window.location.href = '/play?token=' + pathToken;
+            }
+          }
+        } catch (e) {
+          console.error('Error in route handling script:', e);
+        }
+      })();
+    </script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
     
     <!-- Favicon -->
@@ -14,7 +64,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Educational gaming platform with tutoring services" />
     <title>Educational Gaming Platform</title>
-
   </head>
   <body>
     <div id="root"></div>
