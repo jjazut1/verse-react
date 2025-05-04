@@ -173,8 +173,16 @@ const GameByToken: React.FC = () => {
   };
   
   // Handle game completion
-  const handleGameComplete = async (results: any) => {
-    if (!assignment || !startTime || !gameConfig) return;
+  const handleGameComplete = async (score: number) => {
+    if (!assignment || !startTime || !gameConfig) {
+      console.error("GameByToken: Cannot save attempt - missing required data", { 
+        hasAssignment: !!assignment, 
+        hasStartTime: !!startTime, 
+        hasGameConfig: !!gameConfig 
+      });
+      alert('Missing required data to save your progress. Please try again.');
+      return;
+    }
     
     setIsSubmitting(true);
     
@@ -182,14 +190,30 @@ const GameByToken: React.FC = () => {
       const endTime = new Date();
       const durationInSeconds = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
       
-      // Use the assignment's studentEmail and the provided studentName
-      await createAttempt(assignment.id || '', {
+      // Debug log all attempt data before saving
+      console.log("GameByToken: Attempting to save progress with data:", {
+        assignmentId: assignment.id,
+        studentEmail: assignment.studentEmail,
+        studentName: studentName || 'Unknown Student',
         duration: durationInSeconds,
-        score: results.score,
-        results: results,
+        score: score,
+        scoreType: typeof score,
+        gameType: gameConfig.type
+      });
+      
+      // Ensure we have a valid number for score, default to 0 if not
+      const validScore = typeof score === 'number' && !isNaN(score) ? score : 0;
+      
+      // Use the assignment's studentEmail and the provided studentName
+      const attemptId = await createAttempt(assignment.id || '', {
+        duration: durationInSeconds,
+        score: validScore,
+        results: { score: validScore },
         studentEmail: assignment.studentEmail,
         studentName: studentName || 'Unknown Student'
       });
+      
+      console.log(`GameByToken: Successfully saved attempt with ID: ${attemptId}`);
       
       // Update the assignment status if needed
       if (assignment.status === 'assigned') {
@@ -206,6 +230,8 @@ const GameByToken: React.FC = () => {
         status: isNowCompleted ? 'completed' : assignment.status
       });
       
+      console.log(`GameByToken: Updated assignment - attempts: ${newCompletedCount}/${assignment.timesRequired}, completed: ${isNowCompleted}`);
+      
       setIsPlaying(false);
       setStartTime(null);
       
@@ -215,7 +241,23 @@ const GameByToken: React.FC = () => {
       }
     } catch (err) {
       console.error('Error submitting attempt:', err);
-      alert('Failed to save your progress. Please try again.');
+      
+      // More descriptive error message to the user
+      let errorMessage = 'Failed to save your progress. Please try again.';
+      
+      if (err instanceof Error) {
+        console.error('Error details:', err.message);
+        // Customize error message based on the specific error
+        if (err.message.includes('undefined')) {
+          errorMessage = 'There was an issue with your score data. Please try again.';
+        } else if (err.message.includes('permission')) {
+          errorMessage = 'You do not have permission to submit this attempt. Please check your authentication.';
+        } else if (err.message.includes('network')) {
+          errorMessage = 'Network error while saving progress. Please check your connection and try again.';
+        }
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsSubmitting(false);
     }

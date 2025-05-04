@@ -171,42 +171,65 @@ export const createAttempt = async (assignmentId: string, attemptData: {
   studentName: string;
 }): Promise<string> => {
   try {
-    const docRef = await addDoc(collection(db, 'attempts'), {
+    // Validate inputs to ensure we don't send invalid data to Firestore
+    if (!assignmentId) {
+      throw new Error("Missing assignmentId parameter");
+    }
+    
+    // Ensure we have valid values for all fields or provide defaults
+    const validatedData = {
       assignmentId,
-      studentEmail: attemptData.studentEmail,
-      studentName: attemptData.studentName,
-      duration: attemptData.duration,
-      score: attemptData.score,
-      results: attemptData.results,
+      studentEmail: attemptData.studentEmail || "unknown@email.com",
+      studentName: attemptData.studentName || "Unknown Student",
+      duration: typeof attemptData.duration === 'number' ? attemptData.duration : 0,
+      // Ensure score is a valid number or null (not undefined)
+      score: typeof attemptData.score === 'number' && !isNaN(attemptData.score) ? attemptData.score : null,
+      // Ensure results is a valid object (not undefined)
+      results: attemptData.results || null,
       timestamp: Timestamp.now(),
-    });
+    };
+    
+    console.log("Creating attempt with validated data:", validatedData);
+    
+    const docRef = await addDoc(collection(db, 'attempts'), validatedData);
+    console.log("Successfully created attempt with ID:", docRef.id);
     return docRef.id;
   } catch (error) {
     console.error('Error creating attempt:', error);
+    // Rethrow the error for handling upstream
     throw error;
   }
 };
 
 // Get assignment by token
 export const getAssignmentByToken = async (token: string): Promise<Assignment | null> => {
+  if (!token) {
+    console.error("getAssignmentByToken: Missing token parameter");
+    return null;
+  }
+
   try {
+    console.log(`getAssignmentByToken: Searching for assignment with token: ${token}`);
     const assignmentsRef = collection(db, 'assignments');
     const q = query(assignmentsRef, where('linkToken', '==', token));
     
     const querySnapshot = await getDocs(q);
     
     if (querySnapshot.empty) {
+      console.warn(`getAssignmentByToken: No assignment found with token: ${token}`);
       return null;
     }
     
     // There should only be one assignment with this token
     const doc = querySnapshot.docs[0];
+    console.log(`getAssignmentByToken: Found assignment with ID: ${doc.id}`);
+    
     return {
       id: doc.id,
       ...doc.data(),
     } as Assignment;
   } catch (error) {
-    console.error('Error getting assignment by token:', error);
+    console.error(`getAssignmentByToken: Error searching for token ${token}:`, error);
     throw error;
   }
 }; 
