@@ -9,8 +9,8 @@ node_modules/
 
 # Firebase config backups (contains sensitive API keys)
 # Uncomment these lines if you don't want to commit sensitive config
-# firebase-config-backup.json
-# config-backups/
+firebase-config-backup.json
+config-backups/
 
 # Local environment variables
 .env
