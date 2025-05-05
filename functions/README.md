@@ -1,6 +1,69 @@
 # Verse Learning Firebase Functions
 
-This directory contains Firebase Cloud Functions for the Verse Learning application.
+This directory contains the Firebase Cloud Functions for Verse Learning, including email notifications for assignments and daily reminders.
+
+## Configuration Backup and Restore
+
+To ensure that Firebase Functions configurations (which are stored outside of Git) can be backed up and restored, we've created several utility scripts:
+
+### Basic Backup and Restore
+
+- `backup-config.js`: Creates a simple backup of all Firebase Functions configurations
+- `restore-config.js`: Restores configurations from the basic backup
+
+### Versioned Backup and Restore
+
+- `make-versioned-backup.js`: Creates a backup with Git commit information for better versioning
+- `restore-versioned-backup.js`: Restores from a versioned backup, with warnings if the current Git commit doesn't match
+
+### Usage
+
+**Creating a Backup:**
+```bash
+node backup-config.js
+# or
+node make-versioned-backup.js
+```
+
+**Restoring a Backup:**
+```bash
+node restore-config.js
+# or
+node restore-versioned-backup.js [optional-backup-file-path]
+```
+
+After restoring, always deploy the functions:
+```bash
+firebase deploy --only functions
+```
+
+## Documentation
+
+- `ENVIRONMENT_SETUP.md`: Comprehensive guide for setting up and restoring the environment
+- `ENVIRONMENT_VARIABLES.md`: Documentation for the required environment variables
+
+## Testing Email Functionality
+
+To test if the SendGrid API key is working:
+```bash
+node src/test-sendgrid.js
+```
+
+## Security Considerations
+
+The backup files contain sensitive information like API keys. Consider:
+
+1. Adding them to `.gitignore` (uncomment the relevant lines)
+2. Encrypting them before committing
+3. Using a private repository
+
+## Current Working Configuration
+
+The current working configuration has been backed up to:
+- `firebase-config-backup.json` (latest version)
+- A versioned backup in the `config-backups/` directory
+
+This backup corresponds to the Git commit that fixed the email notification system.
 
 ## Functions Overview
 
