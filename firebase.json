@@ -18,7 +18,8 @@
       ],
       "predeploy": [
         "npm --prefix \"$RESOURCE_DIR\" run build"
-      ]
+      ],
+      "gen": 1
     }
   ],
   "hosting": [
@@ -34,6 +35,10 @@
         {
           "source": "/assignment/*",
           "destination": "/token-redirect.html"
+        },
+        {
+          "source": "/assignment-access",
+          "destination": "/index.html"
         },
         {
           "source": "**",
@@ -73,6 +78,53 @@
         {
           "source": "/assignment/*",
           "destination": "/token-redirect.html"
+        },
+        {
+          "source": "/assignment-access",
+          "destination": "/index.html"
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(js|css)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "max-age=31536000"
+            }
+          ]
+        },
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "testing",
+      "public": "dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        {
+          "source": "/play/*",
+          "destination": "/token-redirect.html"
+        },
+        {
+          "source": "/assignment/*",
+          "destination": "/token-redirect.html"
+        },
+        {
+          "source": "/assignment-access",
+          "destination": "/index.html"
         },
         {
           "source": "**",
