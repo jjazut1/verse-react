@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { getAuth, isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { isEmailSignInLink, completeSignInWithEmailLink, getAssignmentToken } from '../services/authService';
 
 // Add reCAPTCHA types
 declare global {
@@ -113,10 +117,84 @@ const Login = () => {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [recaptchaVerified, setRecaptchaVerified] = useState(false);
   const [recaptchaLoaded, setRecaptchaLoaded] = useState(false);
+  const [emailLinkSuccess, setEmailLinkSuccess] = useState(false);
   const recaptchaRef = useRef<number | null>(null);
   const recaptchaContainerRef = useRef<HTMLDivElement>(null);
   const { login, signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const assignmentId = searchParams.get('assignmentId');
+
+  // Handle email link authentication
+  useEffect(() => {
+    const handleEmailLinkSignIn = async () => {
+      if (isEmailSignInLink()) {
+        setIsLoading(true);
+        
+        // Track the start time for analytics
+        const startTime = Date.now();
+        
+        // Get the email address from localStorage
+        let emailForSignIn = localStorage.getItem('emailForSignIn');
+        
+        // If no email in storage, prompt the user for it
+        if (!emailForSignIn) {
+          const userEmail = window.prompt('Please provide your email for confirmation');
+          if (!userEmail) {
+            setError('Email is required to complete sign-in');
+            setIsLoading(false);
+            return;
+          }
+          emailForSignIn = userEmail;
+        }
+        
+        try {
+          // Complete the sign-in process
+          await completeSignInWithEmailLink(emailForSignIn);
+          
+          // Calculate time to complete authentication
+          const timeToComplete = Date.now() - startTime;
+          
+          // Success message
+          setEmailLinkSuccess(true);
+          
+          // If there is an assignmentId in the URL, redirect to the assignment
+          if (assignmentId) {
+            try {
+              // Get the assignment token using the callable function
+              const assignmentToken = await getAssignmentToken(assignmentId);
+              
+              // Get assignment details to check if it's a beta test
+              const assignmentRef = doc(db, 'assignments', assignmentId);
+              const assignmentDoc = await getDoc(assignmentRef);
+              const assignmentData = assignmentDoc.data();
+              
+              // If it's a beta test assignment, redirect to feedback form first
+              if (assignmentData && assignmentData.beta === true) {
+                navigate(`/feedback?assignmentId=${assignmentId}&timeToComplete=${timeToComplete}`);
+              } else {
+                // Regular assignment, redirect directly to the game
+                navigate(`/play?token=${assignmentToken}`);
+              }
+            } catch (err) {
+              console.error('Error fetching assignment:', err);
+              setError('Error loading assignment');
+              setIsLoading(false);
+            }
+          } else {
+            // No assignment ID, just go to home page
+            navigate('/');
+          }
+        } catch (error) {
+          console.error('Error signing in with email link:', error);
+          setError('Error completing email link sign-in. The link may be invalid or expired.');
+          setIsLoading(false);
+        }
+      }
+    };
+    
+    handleEmailLinkSignIn();
+  }, [navigate, assignmentId, db]);
 
   // Load reCAPTCHA script when component mounts
   useEffect(() => {
@@ -328,6 +406,20 @@ const Login = () => {
     }
     return null;
   };
+
+  // Render email link success message
+  if (emailLinkSuccess) {
+    return (
+      <div style={containerStyle}>
+        <h2 style={{ textAlign: 'center', color: 'var(--color-success-600)' }}>
+          Sign-in Successful!
+        </h2>
+        <p style={{ textAlign: 'center' }}>
+          Redirecting to your assignment...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '2rem', backgroundColor: 'var(--color-gray-100)', minHeight: 'calc(100vh - 64px)' }}>

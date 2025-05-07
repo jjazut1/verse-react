@@ -232,4 +232,36 @@ export const getAssignmentByToken = async (token: string): Promise<Assignment | 
     console.error(`getAssignmentByToken: Error searching for token ${token}:`, error);
     throw error;
   }
+};
+
+// Create a new assignment with passwordless authentication 
+export const createAssignmentWithEmailLink = async (assignmentData: Omit<Assignment, 'id' | 'linkToken' | 'status' | 'completedCount' | 'createdAt'>): Promise<string> => {
+  try {
+    // Generate a unique link token for the assignment
+    const linkToken = uuidv4();
+    
+    // Prepare complete assignment data
+    const completeAssignmentData = {
+      ...assignmentData,
+      linkToken,
+      status: 'assigned',
+      completedCount: 0,
+      createdAt: Timestamp.now(),
+      // Flag to track if email is sent
+      emailSent: false,
+      // Flag to indicate this assignment should use email link authentication
+      useEmailLinkAuth: true
+    };
+    
+    // Create assignment document in Firestore
+    const docRef = await addDoc(collection(db, 'assignments'), completeAssignmentData);
+    
+    console.log('Assignment with email link auth created with ID:', docRef.id);
+    console.log('Email will be sent automatically via Firebase Cloud Functions');
+    
+    return docRef.id;
+  } catch (error) {
+    console.error('Error creating assignment with email link auth:', error);
+    throw error;
+  }
 }; 

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getGameConfigByToken } from '../services/gameService';
-import { updateAssignment, createAttempt } from '../services/assignmentService';
+import { updateAssignment, createAttempt, getAssignmentByToken } from '../services/assignmentService';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { Timestamp } from 'firebase/firestore';
 import { sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../config/firebase';
@@ -127,20 +128,31 @@ const GameByToken: React.FC = () => {
     setError(null);
     
     try {
-      console.log(`GameByToken: Loading game config for token: ${tokenValue}`);
-      const result = await getGameConfigByToken(tokenValue);
+      console.log(`GameByToken: Loading assignment for token: ${tokenValue}`);
+      const assignment = await getAssignmentByToken(tokenValue);
       
-      if (!result || !result.gameConfig || !result.assignment) {
-        throw new Error("Invalid game data received");
+      if (!assignment) {
+        throw new Error("Assignment not found");
       }
       
-      setGameConfig(result.gameConfig);
-      setAssignment(result.assignment);
+      // Load the game configuration based on the assignment's gameId
+      console.log(`GameByToken: Loading game config for gameId: ${assignment.gameId}`);
+      const gameConfigRef = doc(db, 'userGameConfigs', assignment.gameId);
+      const gameConfigDoc = await getDoc(gameConfigRef);
+      
+      if (!gameConfigDoc.exists()) {
+        throw new Error("Game configuration not found");
+      }
+      
+      const gameConfig = gameConfigDoc.data();
+      
+      setGameConfig(gameConfig);
+      setAssignment(assignment);
       
       // Pre-fill the authentication email
-      if (result.assignment.studentEmail) {
-        setAuthEmail(result.assignment.studentEmail);
-        console.log('Pre-filled auth email:', result.assignment.studentEmail);
+      if (assignment.studentEmail) {
+        setAuthEmail(assignment.studentEmail);
+        console.log('Pre-filled auth email:', assignment.studentEmail);
       }
     } catch (err) {
       console.error('Error loading game by token:', err);

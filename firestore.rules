@@ -6,10 +6,14 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+
+    
     function isTeacher() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
-    }
+  return isAuthenticated() && 
+    exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "teacher";
+}
+    
     
     function isAdmin() {
       return isAuthenticated() && 
@@ -66,11 +70,6 @@ service cloud.firestore {
         );
     }
 
-    function isValidPlayerName(name) {
-      // Only allow alphanumeric characters and spaces
-      let nameRegex = "[A-Za-z0-9\\s]+";
-      return name.matches(nameRegex);
-    }
     
     // Games collection
     match /games/{gameId} {
@@ -111,24 +110,34 @@ service cloud.firestore {
       allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
     }
     
-    // Assignments collection
     match /assignments/{assignmentId} {
-      // Allow service accounts to read/write
-      allow read, write: if isServiceAccount();
-      
-      // Allow anyone to read assignments (needed for the link token functionality)
-      // This is more permissive but simpler for now - we could tighten security later
-      allow read: if true;
-      
-      // Allow teachers to create/update/delete
-      allow create, update, delete: if isTeacherOrAdmin();
-      
-      // Allow authenticated students to update assignment status and completion fields
-      allow update: if isAuthenticated() && 
-        // Only allow updating specific fields
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'completedCount', 'lastCompletedAt']);
-    }
+  // Read allowed for everyone
+  allow read: if true;
+
+  // Allow service accounts full access
+  allow read, write: if isServiceAccount();
+
+  // Teachers and Admins can create if data is valid
+  allow create: if isTeacherOrAdmin() &&
+    (!('useEmailLinkAuth' in request.resource.data) || request.resource.data.useEmailLinkAuth is bool);
+
+  // Teachers/Admins can update/delete
+  allow update, delete: if isTeacherOrAdmin();
+
+  // Allow teachers/admins full access to assign games
+  allow write: if isTeacherOrAdmin();
+
+  // Allow students to update only specific fields
+  allow update: if isAuthenticated() &&
+    request.resource.data.diff(resource.data).affectedKeys()
+      .hasOnly(['status', 'completedCount', 'lastCompletedAt', 'emailSent']);
+
+  // Allow Firebase Functions to patch specific fields
+  allow update: if request.auth != null &&
+    request.resource.data.diff(resource.data).affectedKeys()
+      .hasOnly(['emailSent', 'useEmailLinkAuth', 'beta']);
+}
+
     
     // Attempts collection - track student game attempts
     match /attempts/{attemptId} {
@@ -142,11 +151,6 @@ service cloud.firestore {
       allow update, delete: if isTeacherOrAdmin();
     }
     
-    // Teachers collection
-    match /teachers/{teacherId} {
-      allow read: if true;
-      allow write: if false;
-    }
     
     // Users collection
     match /users/{userId} {
@@ -170,6 +174,18 @@ service cloud.firestore {
     match /categoryTemplates/{templateId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Assignment tokens collection
+    match /assignmentTokens/{tokenId} {
+      // Only service accounts and cloud functions can create tokens
+      allow create: if isServiceAccount();
+      
+      // Only service accounts and cloud functions can read and update tokens
+      allow read, update: if isServiceAccount();
+      
+      // No one can delete tokens (they should be marked as used instead)
+      allow delete: if false;
     }
   }
 } 

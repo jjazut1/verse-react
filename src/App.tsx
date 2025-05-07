@@ -4,7 +4,9 @@ import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Login from './pages/Login'
+import LoginComplete from './pages/LoginComplete'
 import ForgotPassword from './pages/ForgotPassword'
+import EmailAuthFeedback from './pages/EmailAuthFeedback'
 import GamePlayer from './components/GamePlayer'
 import TeacherDashboard from './pages/TeacherDashboard'
 import ConfigurationRouter from './pages/configurations/ConfigurationRouter'
@@ -305,6 +307,16 @@ const router = createBrowserRouter([
   {
     path: "/login",
     element: <Layout><Login /></Layout>,
+    errorElement: <ErrorBoundary />,
+  },
+  {
+    path: "/login-complete",
+    element: <Layout><LoginComplete /></Layout>,
+    errorElement: <ErrorBoundary />,
+  },
+  {
+    path: "/feedback",
+    element: <Layout><EmailAuthFeedback /></Layout>,
     errorElement: <ErrorBoundary />,
   },
   {

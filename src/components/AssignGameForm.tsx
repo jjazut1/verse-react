@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Timestamp } from 'firebase/firestore';
-import { createAssignment, markAssignmentEmailAsSent } from '../services/assignmentService';
+import { createAssignment, createAssignmentWithEmailLink, markAssignmentEmailAsSent } from '../services/assignmentService';
 import { useAuth } from '../contexts/AuthContext';
 
 // Define GameObject interface based on Home.tsx's interface
@@ -30,6 +30,7 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
   const [studentEmail, setStudentEmail] = useState('');
   const [deadline, setDeadline] = useState('');
   const [timesRequired, setTimesRequired] = useState(1);
+  const [usePasswordlessAuth, setUsePasswordlessAuth] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -62,7 +63,7 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
       const deadlineDate = new Date(deadline);
       deadlineDate.setHours(23, 59, 59, 999);
       
-      const assignmentId = await createAssignment({
+      const assignmentData = {
         teacherId: currentUser.uid,
         studentEmail,
         gameId: game.id || '',
@@ -70,10 +71,17 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
         gameType: game.type,
         deadline: Timestamp.fromDate(deadlineDate),
         timesRequired,
-      });
+      };
       
-      // Mark the email as sent to prevent duplicate emails
-      await markAssignmentEmailAsSent(assignmentId);
+      // Use different creation method based on auth type selection
+      let assignmentId;
+      if (usePasswordlessAuth) {
+        assignmentId = await createAssignmentWithEmailLink(assignmentData);
+      } else {
+        assignmentId = await createAssignment(assignmentData);
+        // Mark the email as sent only for non-passwordless auth
+        await markAssignmentEmailAsSent(assignmentId);
+      }
       
       setShowSuccess(true);
       setTimeout(() => {
@@ -252,6 +260,42 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
               <option key={num} value={num}>{num}</option>
             ))}
           </select>
+        </div>
+        
+        <div style={{ marginBottom: 'var(--spacing-4)' }}>
+          <label style={{ 
+            display: 'block', 
+            marginBottom: 'var(--spacing-2)', 
+            fontWeight: 'bold',
+            color: 'var(--color-gray-700)'
+          }}>
+            Authentication Method
+          </label>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            marginBottom: 'var(--spacing-2)'
+          }}>
+            <input
+              type="checkbox"
+              id="usePasswordlessAuth"
+              checked={usePasswordlessAuth}
+              onChange={(e) => setUsePasswordlessAuth(e.target.checked)}
+              style={{ marginRight: 'var(--spacing-2)' }}
+            />
+            <label htmlFor="usePasswordlessAuth">
+              Use passwordless authentication (recommended for young students)
+            </label>
+          </div>
+          <p style={{ 
+            fontSize: 'var(--font-size-sm)',
+            color: 'var(--color-gray-500)',
+            marginTop: 'var(--spacing-1)'
+          }}>
+            {usePasswordlessAuth ? 
+              "Students will receive an email with a single-click link to access the assignment without needing a password." :
+              "Students will receive an email with a link that requires authentication."}
+          </p>
         </div>
         
         <div style={{
