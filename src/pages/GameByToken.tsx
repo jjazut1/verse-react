@@ -16,6 +16,9 @@ const GameByToken: React.FC = () => {
   const token = searchParams.get('token') || '';
   const navigate = useNavigate();
   
+  // Special flag for email link access which skips authentication
+  const [isEmailLinkAccess, setIsEmailLinkAccess] = useState(false);
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gameConfig, setGameConfig] = useState<any | null>(null);
@@ -38,18 +41,96 @@ const GameByToken: React.FC = () => {
   // Check authentication status on component mount
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthenticated(!!user);
-      setCurrentUser(user);
-      console.log('Authentication state changed:', { authenticated: !!user, email: user?.email });
+      // Check for direct access mode
+      const isDirectAccess = isEmailLinkAccess || 
+                            sessionStorage.getItem('direct_token_access') === 'true' || 
+                            searchParams.get('directAccess') === 'true';
+                            
+      // If direct access, always set as authenticated regardless of Firebase auth state
+      if (isDirectAccess) {
+        setIsAuthenticated(true);
+        console.log('Authentication state overridden for direct access:', { authenticated: true });
+        
+        // Create a minimal user object if none exists
+        if (!user && assignment) {
+          const syntheticUser = {
+            email: assignment.studentEmail || 'student@example.com',
+            displayName: assignment.studentName || 'Student'
+          };
+          setCurrentUser(syntheticUser);
+          console.log('Created synthetic user for direct access:', syntheticUser);
+        } else {
+          setCurrentUser(user);
+        }
+      } else {
+        // Normal authentication flow
+        setIsAuthenticated(!!user);
+        setCurrentUser(user);
+        console.log('Authentication state changed:', { authenticated: !!user, email: user?.email });
+      }
       
       // Close the auth form if the user is now authenticated
-      if (user) {
+      if (user || isDirectAccess) {
         setShowAuthForm(false);
       }
     });
     
     return () => unsubscribe();
-  }, []);
+  }, [isEmailLinkAccess, assignment, searchParams]);
+  
+  // Check for email link parameters on initial load
+  useEffect(() => {
+    // Check if we came from an email link or direct token access route
+    const currentUrl = window.location.href;
+    const referrer = document.referrer;
+    const hasOobCodeInReferrer = referrer.includes('oobCode=');
+    const hasOobCodeInUrl = currentUrl.includes('oobCode=') || searchParams.get('oobCode');
+    const hasAssignmentId = referrer.includes('assignmentId=') || searchParams.get('assignmentId');
+    const hasModeSignIn = currentUrl.includes('mode=signIn') || searchParams.get('mode') === 'signIn';
+    
+    // Check direct token access from Login.tsx (add this check)
+    const directAccessParam = searchParams.get('directAccess');
+    const hasDirectAccess = directAccessParam === 'true' || sessionStorage.getItem('direct_token_access') === 'true';
+    
+    // Log all parameters to debug the detection
+    console.log('GameByToken: checking for token access mode:', {
+      hasOobCodeInReferrer, 
+      hasOobCodeInUrl, 
+      hasAssignmentId, 
+      hasModeSignIn,
+      directAccessParam,
+      hasDirectAccess,
+      referrer,
+      tokenValue: token
+    });
+    
+    if ((hasOobCodeInReferrer || hasOobCodeInUrl) || 
+        (hasAssignmentId) || 
+        (hasModeSignIn) ||
+        (hasDirectAccess)) {
+      console.log('GameByToken: Detected special access mode - bypassing authentication requirement');
+      setIsEmailLinkAccess(true);
+      
+      // Store flag in session storage to persist across page reloads
+      sessionStorage.setItem('direct_token_access', 'true');
+    }
+    
+    // Additional token check - if token is in URL directly from email link
+    const urlParams = new URLSearchParams(window.location.search);
+    const oobCode = urlParams.get('oobCode');
+    const emailParam = urlParams.get('email');
+    const modeParam = urlParams.get('mode');
+    
+    if (oobCode || (emailParam && token) || (modeParam === 'signIn')) {
+      console.log('GameByToken: Email link parameters detected in URL, skipping authentication requirement');
+      setIsEmailLinkAccess(true);
+      
+      // Store email for potential use later
+      if (emailParam) {
+        setAuthEmail(emailParam);
+      }
+    }
+  }, [searchParams, token]);
   
   useEffect(() => {
     // Validate token parameter
@@ -102,6 +183,12 @@ const GameByToken: React.FC = () => {
   useEffect(() => {
     // Once the game config and assignment are loaded and we know the user isn't authenticated
     if (!loading && gameConfig && assignment && !isAuthenticated && !currentUser) {
+      // If this is a direct email link access, don't require authentication
+      if (isEmailLinkAccess) {
+        console.log('Skipping authentication requirement for email link access');
+        return;
+      }
+      
       // Show the authentication form right away
       if (assignment.studentEmail) {
         setAuthEmail(assignment.studentEmail);
@@ -114,7 +201,7 @@ const GameByToken: React.FC = () => {
         setShowAuthForm(true);
       }
     }
-  }, [loading, gameConfig, assignment, isAuthenticated, currentUser, isAuthenticating, showAuthForm]);
+  }, [loading, gameConfig, assignment, isAuthenticated, currentUser, isAuthenticating, showAuthForm, isEmailLinkAccess]);
   
   // Load the game configuration and assignment using the token
   const loadGameAndAssignment = async (tokenValue: string) => {
@@ -122,6 +209,14 @@ const GameByToken: React.FC = () => {
       setError("Invalid game token");
       setLoading(false);
       return;
+    }
+    
+    // Check for direct access indicators
+    const directAccess = searchParams.get('directAccess') === 'true' || 
+                          sessionStorage.getItem('direct_token_access') === 'true';
+    if (directAccess) {
+      console.log('GameByToken: Loading assignment with direct access mode');
+      setIsEmailLinkAccess(true);
     }
     
     setLoading(true);
@@ -254,22 +349,64 @@ const GameByToken: React.FC = () => {
     }).format(date);
   };
   
-  // Handle start game button click
+  // Update handleStartGame to skip authentication for email links
   const handleStartGame = () => {
-    if (!studentNameSubmitted) {
-      if (!studentName.trim()) {
-        alert('Please enter your name to continue.');
-        return;
-      }
-      setStudentNameSubmitted(true);
-    }
-    
-    // Clear any previous save errors
-    setSaveError(null);
-    
     setIsPlaying(true);
     setStartTime(new Date());
+    
+    // If this is coming from an email link, we're already "authenticated" via the link
+    if (isEmailLinkAccess && assignment && assignment.studentEmail) {
+      console.log('Using email from assignment for email link access:', assignment.studentEmail);
+      // Pre-fill student name from email if needed
+      if (!studentName && assignment.studentName) {
+        setStudentName(assignment.studentName);
+        setStudentNameSubmitted(true);
+      } else if (!studentName) {
+        // Use email as name if we don't have a better option
+        setStudentName(assignment.studentEmail.split('@')[0]); // Use part before @ as name
+        setStudentNameSubmitted(true);
+      }
+    }
   };
+  
+  // Add this new useEffect to automatically start game for email link users
+  useEffect(() => {
+    // When isEmailLinkAccess is true, game is loaded, and the user has a student email
+    if (isEmailLinkAccess && !loading && !isPlaying && assignment && assignment.studentEmail) {
+      console.log('Auto starting game for email link user with email:', assignment.studentEmail);
+      // Pre-fill student name
+      if (!studentName && assignment.studentName) {
+        setStudentName(assignment.studentName);
+      } else if (!studentName) {
+        setStudentName(assignment.studentEmail.split('@')[0]);
+      }
+      setStudentNameSubmitted(true);
+      
+      // Short delay to ensure state updates first
+      setTimeout(() => {
+        console.log('GameByToken: Auto-starting game in direct access mode');
+        setIsPlaying(true);
+        setStartTime(new Date());
+      }, 500);
+    }
+  }, [isEmailLinkAccess, loading, isPlaying, assignment, studentName]);
+  
+  // Add a new useEffect at the component top level to force bypassing authentication on direct access
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const directAccess = urlParams.get('directAccess') === 'true';
+    
+    if (directAccess) {
+      console.log('GameByToken: Direct access parameter detected in URL');
+      setIsEmailLinkAccess(true);
+      
+      // Force authenticated state for direct access mode
+      setIsAuthenticated(true);
+      console.log('GameByToken: Setting authenticated state to true for direct access');
+      
+      sessionStorage.setItem('direct_token_access', 'true');
+    }
+  }, []);
   
   // Handle game completion
   const handleGameComplete = async (score: number) => {
@@ -444,30 +581,144 @@ const GameByToken: React.FC = () => {
   
   // Render appropriate game component based on type
   const renderGame = () => {
-    if (!assignment || !gameConfig) return null;
-    
-    switch (gameConfig.type) {
-      case 'sort-categories-egg':
-        return (
-          <SortCategoriesEggRevealAdapter
-            config={gameConfig}
-            onGameComplete={handleGameComplete}
-            playerName={studentName}
-          />
-        );
-      case 'whack-a-mole':
-        return (
-          <WhackAMoleAdapter
-            config={gameConfig}
-            onGameComplete={handleGameComplete}
-            playerName={studentName}
-          />
-        );
-      default:
-        return (
-          <div>Unsupported game type</div>
-        );
+    // If loading, show loading indicator
+    if (loading) {
+      return <div className="text-center py-10">Loading game...</div>;
     }
+    
+    // If error, show error message
+    if (error) {
+      return (
+        <div className="max-w-lg mx-auto my-8 p-6 bg-red-50 border border-red-300 rounded-lg">
+          <h2 className="text-xl font-bold text-red-700 mb-2">Error</h2>
+          <p className="text-red-700">{error}</p>
+          <button 
+            onClick={() => navigate('/')}
+            className="mt-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
+          >
+            Return Home
+          </button>
+        </div>
+      );
+    }
+    
+    // If we have a game config but not playing yet
+    if (gameConfig && !isPlaying) {
+      // Skip authentication check if coming from email link or direct access
+      const skipAuthCheck = isEmailLinkAccess || sessionStorage.getItem('direct_token_access') === 'true';
+      
+      if (!isAuthenticated && !currentUser && !skipAuthCheck) {
+        // Show authentication form
+        return renderAuthenticationForm();
+      }
+      
+      // If we're past the deadline, show past due message
+      if (isPastDue()) {
+        return (
+          <div className="max-w-lg mx-auto my-8 p-6 bg-yellow-50 border border-yellow-300 rounded-lg">
+            <h2 className="text-xl font-bold text-yellow-700 mb-2">Assignment Past Due</h2>
+            <p className="text-yellow-700">
+              This assignment was due on {new Date(assignment.deadline.seconds * 1000).toLocaleDateString()}.
+              You can still complete it, but it will be marked as late.
+            </p>
+            {!studentNameSubmitted ? (
+              renderStudentNameForm()
+            ) : (
+              <button 
+                onClick={handleStartGame}
+                className="mt-4 px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold"
+              >
+                Start Game
+              </button>
+            )}
+          </div>
+        );
+      }
+      
+      // If the assignment is already completed, show completion message with option to play again
+      if (isCompleted()) {
+        return (
+          <div className="max-w-lg mx-auto my-8 p-6 bg-green-50 border border-green-300 rounded-lg">
+            <h2 className="text-xl font-bold text-green-700 mb-2">Assignment Already Completed</h2>
+            <p className="text-green-700 mb-4">
+              You have already completed this assignment with a score of {assignment.score}.
+            </p>
+            {!studentNameSubmitted ? (
+              renderStudentNameForm()
+            ) : (
+              <button 
+                onClick={handleStartGame}
+                className="mt-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold"
+              >
+                Play Again
+              </button>
+            )}
+          </div>
+        );
+      }
+      
+      // Standard start screen
+      return (
+        <div className="max-w-lg mx-auto my-8 p-6 bg-white border border-gray-200 shadow-md rounded-lg">
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">{gameConfig.title}</h2>
+          
+          {gameConfig.instructions && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-2">Instructions:</h3>
+              <div className="prose prose-sm max-w-none">
+                {gameConfig.instructions}
+              </div>
+            </div>
+          )}
+          
+          {assignment && assignment.deadline && (
+            <p className="mb-4 text-sm text-gray-600">
+              Due date: {new Date(assignment.deadline.seconds * 1000).toLocaleDateString()}
+            </p>
+          )}
+          
+          {!studentNameSubmitted && !isEmailLinkAccess ? (
+            renderStudentNameForm()
+          ) : (
+            <button 
+              onClick={handleStartGame}
+              className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-bold text-lg transition-colors"
+            >
+              Start Game
+            </button>
+          )}
+        </div>
+      );
+    }
+    
+    // If playing the game, render the appropriate game component
+    if (isPlaying && assignment && gameConfig) {
+      switch (gameConfig.type) {
+        case 'sort-categories-egg':
+          return (
+            <SortCategoriesEggRevealAdapter
+              config={gameConfig}
+              onGameComplete={handleGameComplete}
+              playerName={studentName}
+            />
+          );
+        case 'whack-a-mole':
+          return (
+            <WhackAMoleAdapter
+              config={gameConfig}
+              onGameComplete={handleGameComplete}
+              playerName={studentName}
+            />
+          );
+        default:
+          return (
+            <div>Unsupported game type</div>
+          );
+      }
+    }
+    
+    // Fallback
+    return <div className="text-center py-10">Something went wrong. Please try again.</div>;
   };
   
   // Render authentication form
@@ -1202,7 +1453,7 @@ const GameByToken: React.FC = () => {
             {gameConfig.name}
           </h1>
           
-          {/* Authentication status indicator - Now more prominent */}
+          {/* Authentication status indicator - Now more prominent but hidden for direct access */}
           {isAuthenticated && currentUser ? (
             <div style={{
               margin: 'var(--spacing-4) 0',
@@ -1218,48 +1469,53 @@ const GameByToken: React.FC = () => {
               <strong>Authenticated as: {currentUser.email}</strong>
             </div>
           ) : (
-            <div style={{
-              margin: 'var(--spacing-4) 0',
-              padding: 'var(--spacing-3)',
-              backgroundColor: 'var(--color-warning-50)',
-              color: 'var(--color-warning-700)',
-              borderRadius: 'var(--border-radius-sm)',
-              fontSize: 'var(--font-size-md)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--spacing-2)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ marginRight: 'var(--spacing-2)' }}>⚠️</span>
-                <strong>Not authenticated. Please authenticate before playing to ensure your progress is saved.</strong>
+            // Only show warning if not in direct access mode
+            !isEmailLinkAccess && 
+            sessionStorage.getItem('direct_token_access') !== 'true' && 
+            searchParams.get('directAccess') !== 'true' && (
+              <div style={{
+                margin: 'var(--spacing-4) 0',
+                padding: 'var(--spacing-3)',
+                backgroundColor: 'var(--color-warning-50)',
+                color: 'var(--color-warning-700)',
+                borderRadius: 'var(--border-radius-sm)',
+                fontSize: 'var(--font-size-md)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--spacing-2)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span style={{ marginRight: 'var(--spacing-2)' }}>⚠️</span>
+                  <strong>Not authenticated. Please authenticate before playing to ensure your progress is saved.</strong>
+                </div>
+                
+                <button
+                  onClick={() => {
+                    // Pre-fill the student's email if available
+                    if (assignment && assignment.studentEmail) {
+                      setAuthEmail(assignment.studentEmail);
+                    }
+                    // Reset email sent flag if previously shown
+                    setEmailSent(false);
+                    // Show authentication form
+                    setShowAuthForm(true);
+                  }}
+                  style={{
+                    alignSelf: 'flex-start',
+                    backgroundColor: 'var(--color-warning-600)',
+                    color: 'white',
+                    border: 'none',
+                    padding: 'var(--spacing-2) var(--spacing-4)',
+                    borderRadius: 'var(--border-radius-sm)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--font-size-md)',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  Authenticate Now
+                </button>
               </div>
-              
-              <button
-                onClick={() => {
-                  // Pre-fill the student's email if available
-                  if (assignment && assignment.studentEmail) {
-                    setAuthEmail(assignment.studentEmail);
-                  }
-                  // Reset email sent flag if previously shown
-                  setEmailSent(false);
-                  // Show authentication form
-                  setShowAuthForm(true);
-                }}
-                style={{
-                  alignSelf: 'flex-start',
-                  backgroundColor: 'var(--color-warning-600)',
-                  color: 'white',
-                  border: 'none',
-                  padding: 'var(--spacing-2) var(--spacing-4)',
-                  borderRadius: 'var(--border-radius-sm)',
-                  cursor: 'pointer',
-                  fontSize: 'var(--font-size-md)',
-                  fontWeight: 'bold'
-                }}
-              >
-                Authenticate Now
-              </button>
-            </div>
+            )
           )}
           
           {/* Display save error if any */}

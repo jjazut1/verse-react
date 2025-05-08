@@ -128,7 +128,65 @@ const Login = () => {
   // Handle email link authentication
   useEffect(() => {
     const handleEmailLinkSignIn = async () => {
-      if (isEmailSignInLink()) {
+      // Check URL parameters to see if we have email link authentication parameters
+      const hasOobCode = window.location.href.includes('oobCode=');
+      const hasSignInMode = window.location.href.includes('mode=signIn');
+      const hasAssignmentId = !!assignmentId;
+      const hasEmailParam = !!searchParams.get('email');
+
+      console.log('URL parameters check:', { 
+        hasOobCode, 
+        hasSignInMode, 
+        hasAssignmentId,
+        hasEmailParam,
+        assignmentId,
+        fullUrl: window.location.href
+      });
+      
+      // If we have assignmentId and oobCode, we can try direct assignment access
+      if (hasAssignmentId && hasOobCode) {
+        setIsLoading(true);
+        console.log('Direct assignment access path detected');
+        
+        try {
+          // Try the alternative direct path first
+          console.log('Trying direct assignment token access for ID:', assignmentId);
+          
+          // Get the assignment document directly to find the token
+          const assignmentRef = doc(db, 'assignments', assignmentId);
+          const assignmentDoc = await getDoc(assignmentRef);
+          
+          if (!assignmentDoc.exists()) {
+            console.error('Assignment not found:', assignmentId);
+            setError('Assignment not found. Please contact your teacher.');
+            setIsLoading(false);
+            return;
+          }
+          
+          const assignmentData = assignmentDoc.data();
+          console.log('Assignment data retrieved directly:', assignmentData);
+          
+          if (!assignmentData.linkToken) {
+            console.error('Assignment has no link token:', assignmentId);
+            setError('This assignment cannot be accessed via email link. Please contact your teacher.');
+            setIsLoading(false);
+            return;
+          }
+          
+          // We have the token, now redirect to the game
+          console.log('Redirecting to game with direct token access');
+          navigate(`/play?token=${assignmentData.linkToken}&directAccess=true`);
+          return;
+        } catch (directAccessError) {
+          console.error('Error in direct assignment access:', directAccessError);
+          // Continue to try normal flow if direct access fails
+        }
+      }
+      
+      // Original email link authentication flow
+      const isEmailLink = hasOobCode && hasSignInMode;
+      
+      if (isEmailLink || isEmailSignInLink()) {
         setIsLoading(true);
         console.log('Email link authentication detected');
         
@@ -163,7 +221,7 @@ const Login = () => {
         
         try {
           // Complete the sign-in process
-          console.log('Attempting to complete email link sign-in');
+          console.log('Attempting to complete email link sign-in with email:', emailForSignIn);
           await completeSignInWithEmailLink(emailForSignIn);
           
           // Calculate time to complete authentication
@@ -179,12 +237,13 @@ const Login = () => {
             try {
               // Get the assignment token using the callable function
               const assignmentToken = await getAssignmentToken(assignmentId);
-              console.log('Retrieved assignment token successfully');
+              console.log('Retrieved assignment token successfully:', assignmentToken);
               
               // Get assignment details to check if it's a beta test
               const assignmentRef = doc(db, 'assignments', assignmentId);
               const assignmentDoc = await getDoc(assignmentRef);
               const assignmentData = assignmentDoc.data();
+              console.log('Assignment data retrieved:', assignmentData);
               
               // If it's a beta test assignment, redirect to feedback form first
               if (assignmentData && assignmentData.beta === true) {
@@ -210,6 +269,8 @@ const Login = () => {
           setError('Error completing email link sign-in. The link may be invalid or expired.');
           setIsLoading(false);
         }
+      } else {
+        console.log('No email link authentication detected in current URL');
       }
     };
     
