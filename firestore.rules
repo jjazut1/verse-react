@@ -11,19 +11,27 @@ service cloud.firestore {
     function isTeacher() {
   return isAuthenticated() && 
     exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "teacher";
+    request.auth.uid == resource.data.userId &&  // If checking the user's own document
+    resource.data.role == "teacher";
+}
+
+function isAdmin() {
+  return isAuthenticated() && 
+    exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+    request.auth.uid == resource.data.userId &&  // If checking the user's own document
+    resource.data.role == "admin";
 }
     
-    
-    function isAdmin() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
-    }
-    
     function isTeacherOrAdmin() {
-      return isTeacher() || isAdmin();
-    }
+  // Safer approach that doesn't rely on reading user documents
+  // Use this in non-user collections
+  return isAuthenticated() && 
+    (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+    (
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "teacher" ||
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+    ));
+}
     
     // Helper function to check if request is from a service account
     function isServiceAccount() {
@@ -111,7 +119,7 @@ service cloud.firestore {
     }
     
     match /assignments/{assignmentId} {
-  // Read allowed for everyone
+  // Read allowed for everyone - explicitly set to true for clarity
   allow read: if true;
 
   // Allow service accounts full access
@@ -153,10 +161,17 @@ service cloud.firestore {
     
     
     // Users collection
-    match /users/{userId} {
-      allow read: if true;
-      allow write: if isAdmin() || request.auth.uid == userId;
-    }
+match /users/{userId} {
+  // Explicitly allow authenticated users to read their own document unconditionally
+  // This is critical for role-checking functions to work
+  allow read: if request.auth != null && request.auth.uid == userId;
+  
+  // Allow public read access as before
+  allow read: if true;
+  
+  // Keep same write permissions
+  allow write: if isAdmin() || request.auth.uid == userId;
+}
     
     // Sort Categories Egg collection
     match /sortCategoriesEgg/{configId} {

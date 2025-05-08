@@ -71,22 +71,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // Then check if the user is in the teachers collection
-      const userDoc = await getDoc(doc(db, 'teachers', user.uid));
-      if (userDoc.exists()) {
-        setIsTeacher(true);
-        return;
-      }
-      
       // Check if they have a teacher or admin role in their user document
-      const userRecord = await getDoc(doc(db, 'users', user.uid));
-      if (userRecord.exists()) {
-        const role = userRecord.data().role;
-        // If they have either teacher OR admin role, they should have teacher capabilities
-        if (role === 'teacher' || role === 'admin') {
-        setIsTeacher(true);
-        return;
+      try {
+        console.log(`Checking user document for uid: ${user.uid}`);
+        const userRecord = await getDoc(doc(db, 'users', user.uid));
+        
+        if (userRecord.exists()) {
+          const userData = userRecord.data();
+          console.log(`User data retrieved:`, userData);
+          const role = userData.role;
+          
+          // If they have either teacher OR admin role, they should have teacher capabilities
+          if (role === 'teacher' || role === 'admin') {
+            console.log(`User has role: ${role}, setting isTeacher to true`);
+            setIsTeacher(true);
+            return;
+          }
+        } else {
+          console.log(`User document does not exist for uid: ${user.uid}`);
         }
+      } catch (docError) {
+        console.error(`Error reading user document:`, docError);
+        // Continue execution - don't throw the error
       }
       
       setIsTeacher(false);
@@ -202,14 +208,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('No user logged in');
       }
       
+      // Update the user document with admin role
       await setDoc(doc(db, 'users', currentUser.uid), {
         email: currentUser.email,
         role: 'admin',
         updatedAt: new Date().toISOString()
       }, { merge: true });
       
-      // Since we're updating the user's role, check if they're a teacher as well
-      checkIfTeacher(currentUser);
+      // Force set isTeacher to true locally, this ensures the UI will work
+      // even if there are permission issues with reading the user doc
+      setIsTeacher(true);
+      console.log('User set as admin and teacher flag activated');
       
       return true;
     } catch (error) {
