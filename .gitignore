@@ -38,3 +38,4 @@ dist-ssr
 *.backup
 .vercel
 **/service-account-key.json
+.env
