@@ -130,39 +130,56 @@ const Login = () => {
     const handleEmailLinkSignIn = async () => {
       if (isEmailSignInLink()) {
         setIsLoading(true);
+        console.log('Email link authentication detected');
         
         // Track the start time for analytics
         const startTime = Date.now();
         
-        // Get the email address from localStorage
+        // Get the email address from localStorage or URL parameters
         let emailForSignIn = localStorage.getItem('emailForSignIn');
+        console.log('Retrieved email from localStorage:', emailForSignIn ? 'Yes' : 'No');
         
-        // If no email in storage, prompt the user for it
+        // If no email in storage, check URL parameters
         if (!emailForSignIn) {
-          const userEmail = window.prompt('Please provide your email for confirmation');
-          if (!userEmail) {
-            setError('Email is required to complete sign-in');
-            setIsLoading(false);
-            return;
+          const emailParam = searchParams.get('email');
+          console.log('Email parameter in URL:', emailParam ? 'Yes' : 'No');
+          if (emailParam) {
+            emailForSignIn = decodeURIComponent(emailParam);
+            // Store it in localStorage to maintain compatibility with the rest of the flow
+            localStorage.setItem('emailForSignIn', emailForSignIn);
+            console.log('Using email from URL parameter:', emailForSignIn);
+          } else {
+            // If still no email, prompt the user for it
+            const userEmail = window.prompt('Please provide your email for confirmation');
+            if (!userEmail) {
+              setError('Email is required to complete sign-in');
+              setIsLoading(false);
+              return;
+            }
+            emailForSignIn = userEmail;
+            localStorage.setItem('emailForSignIn', emailForSignIn);
           }
-          emailForSignIn = userEmail;
         }
         
         try {
           // Complete the sign-in process
+          console.log('Attempting to complete email link sign-in');
           await completeSignInWithEmailLink(emailForSignIn);
           
           // Calculate time to complete authentication
           const timeToComplete = Date.now() - startTime;
+          console.log('Authentication completed in', timeToComplete, 'ms');
           
           // Success message
           setEmailLinkSuccess(true);
           
           // If there is an assignmentId in the URL, redirect to the assignment
           if (assignmentId) {
+            console.log('Assignment ID found in URL:', assignmentId);
             try {
               // Get the assignment token using the callable function
               const assignmentToken = await getAssignmentToken(assignmentId);
+              console.log('Retrieved assignment token successfully');
               
               // Get assignment details to check if it's a beta test
               const assignmentRef = doc(db, 'assignments', assignmentId);
@@ -171,9 +188,11 @@ const Login = () => {
               
               // If it's a beta test assignment, redirect to feedback form first
               if (assignmentData && assignmentData.beta === true) {
+                console.log('Beta assignment detected, redirecting to feedback form');
                 navigate(`/feedback?assignmentId=${assignmentId}&timeToComplete=${timeToComplete}`);
               } else {
                 // Regular assignment, redirect directly to the game
+                console.log('Redirecting to game with token');
                 navigate(`/play?token=${assignmentToken}`);
               }
             } catch (err) {
@@ -183,6 +202,7 @@ const Login = () => {
             }
           } else {
             // No assignment ID, just go to home page
+            console.log('No assignment ID found, redirecting to home page');
             navigate('/');
           }
         } catch (error) {
@@ -194,7 +214,7 @@ const Login = () => {
     };
     
     handleEmailLinkSignIn();
-  }, [navigate, assignmentId, db]);
+  }, [navigate, assignmentId, db, searchParams]);
 
   // Load reCAPTCHA script when component mounts
   useEffect(() => {

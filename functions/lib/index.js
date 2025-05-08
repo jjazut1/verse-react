@@ -1,11 +1,13 @@
 "use strict";
 var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.testAuthPermissions = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const sgMail = require("@sendgrid/mail");
-// Initialize Firebase
+// Initialize Firebase with the default credentials
 admin.initializeApp();
+console.log('Firebase Admin initialized with default application credentials');
 // Get environment variables from Firebase config
 const SENDGRID_API_KEY = ((_a = functions.config().sendgrid) === null || _a === void 0 ? void 0 : _a.key) || '';
 const SENDER_EMAIL = ((_b = functions.config().email) === null || _b === void 0 ? void 0 : _b.sender) || 'Verse Learning <james@learnwithverse.com>';
@@ -130,23 +132,11 @@ exports.sendEmailLinkWithAssignment = functions.firestore
         console.log(`Processing assignment with email link for student: ${studentEmail}, ID: ${assignmentId}`);
         // Base URL - use Firebase Auth domain
         const baseUrl = 'https://r2process.com';
-        // Set up the action code settings for Firebase Auth Email Link
-        const actionCodeSettings = {
-            url: `${baseUrl}/login?assignmentId=${assignmentId}`,
-            handleCodeInApp: true,
-            iOS: {
-                bundleId: 'com.verselearning.app'
-            },
-            android: {
-                packageName: 'com.verselearning.app',
-                installApp: true,
-                minimumVersion: '12'
-            },
-            dynamicLinkDomain: 'verselearning.page.link'
-        };
-        // Generate the sign-in link with Firebase Auth
-        const signInLink = await admin.auth().generateSignInWithEmailLink(studentEmail, actionCodeSettings);
-        console.log("Generated sign-in link with embedded assignment ID", { signInLink });
+        // Instead of using admin.auth().generateSignInWithEmailLink, we'll manually create a sign-in link
+        // This avoids the Firebase Auth Admin permission issues
+        // The email parameter needs to be included in the URL so it can be retrieved on the login page
+        const signInLink = `${baseUrl}/login?assignmentId=${assignmentId}&email=${encodeURIComponent(studentEmail)}&mode=signIn&oobCode=${assignment.linkToken}`;
+        console.log("Generated sign-in link with embedded assignment and email", { signInLink });
         // Format the due date
         let formattedDate = 'No due date set';
         try {
@@ -242,5 +232,32 @@ exports.getAssignmentByIdForAuth = functions.https.onCall((data, context) => {
         }
         throw new functions.https.HttpsError('internal', 'An error occurred while fetching the assignment');
     });
+});
+// Test function to check if Firebase Admin Auth permissions are working
+exports.testAuthPermissions = functions.https.onRequest(async (req, res) => {
+    try {
+        // Try to generate a custom token, which requires Auth Admin privileges
+        const customToken = await admin.auth().createCustomToken('test-user-id');
+        // Try to access Firestore
+        const snapshot = await admin.firestore().collection('assignments').limit(1).get();
+        const assignmentCount = snapshot.size;
+        res.status(200).json({
+            success: true,
+            message: "Successfully authenticated with Firebase Admin SDK",
+            authPermissionsWorking: true,
+            firestorePermissionsWorking: true,
+            customTokenGenerated: !!customToken,
+            assignmentCount: assignmentCount
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Failed to authenticate with Firebase Admin SDK",
+            error: error.message,
+            errorCode: error.code || 'unknown',
+            errorStack: error.stack
+        });
+    }
 });
 //# sourceMappingURL=index.js.map

@@ -18,9 +18,17 @@ import { auth } from '../config/firebase';
  */
 export const sendAuthenticationEmailLink = async (email: string, redirectUrl?: string): Promise<void> => {
   try {
+    let finalRedirectUrl = redirectUrl || window.location.href;
+    
+    // Add email to the URL if it doesn't already have it
+    if (!finalRedirectUrl.includes('email=')) {
+      const separator = finalRedirectUrl.includes('?') ? '&' : '?';
+      finalRedirectUrl = `${finalRedirectUrl}${separator}email=${encodeURIComponent(email)}`;
+    }
+    
     const actionCodeSettings = {
       // URL you want to redirect back to after sign-in
-      url: redirectUrl || window.location.href,
+      url: finalRedirectUrl,
       handleCodeInApp: true
     };
 
@@ -33,7 +41,7 @@ export const sendAuthenticationEmailLink = async (email: string, redirectUrl?: s
     console.log('Auth link sent to:', email);
     return;
   } catch (error) {
-    console.error('Error sending authentication link:', error);
+    console.error('Error sending email link:', error);
     throw error;
   }
 };
