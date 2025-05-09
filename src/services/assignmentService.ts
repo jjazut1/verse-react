@@ -232,4 +232,46 @@ export const getAssignmentByToken = async (token: string): Promise<Assignment | 
     console.error(`getAssignmentByToken: Error searching for token ${token}:`, error);
     throw error;
   }
+};
+
+// Get the count of attempts for a specific assignment
+export const getAssignmentAttemptsCount = async (assignmentId: string): Promise<number> => {
+  try {
+    const attemptsRef = collection(db, 'attempts');
+    const q = query(attemptsRef, where('assignmentId', '==', assignmentId));
+    
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.size;
+  } catch (error) {
+    console.error('Error getting assignment attempts count:', error);
+    throw error;
+  }
+};
+
+// Update the completed count based on actual attempts
+export const updateCompletedCountFromAttempts = async (assignmentId: string): Promise<void> => {
+  try {
+    // Get the current assignment to check timesRequired
+    const assignment = await getAssignment(assignmentId);
+    if (!assignment) {
+      throw new Error(`Assignment not found with ID: ${assignmentId}`);
+    }
+    
+    // Count the actual attempts
+    const attemptsCount = await getAssignmentAttemptsCount(assignmentId);
+    
+    // Update the assignment with the accurate count
+    const isNowCompleted = attemptsCount >= assignment.timesRequired;
+    
+    await updateAssignment(assignmentId, {
+      completedCount: attemptsCount,
+      lastCompletedAt: Timestamp.now(),
+      status: isNowCompleted ? 'completed' : assignment.status === 'assigned' ? 'started' : assignment.status
+    });
+    
+    console.log(`Updated assignment ${assignmentId} completedCount to ${attemptsCount} based on actual attempts`);
+  } catch (error) {
+    console.error('Error updating completed count from attempts:', error);
+    throw error;
+  }
 }; 

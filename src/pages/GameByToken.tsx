@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getGameConfigByToken } from '../services/gameService';
-import { updateAssignment, createAttempt } from '../services/assignmentService';
+import { updateAssignment, createAttempt, updateCompletedCountFromAttempts } from '../services/assignmentService';
 import { Timestamp } from 'firebase/firestore';
 import { sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../config/firebase';
@@ -333,17 +333,11 @@ const GameByToken: React.FC = () => {
         await updateAssignment(assignment.id || '', { status: 'started' });
       }
       
-      // Update the completedCount and potentially the status
-      const newCompletedCount = (assignment.completedCount || 0) + 1;
-      const isNowCompleted = newCompletedCount >= assignment.timesRequired;
+      // Use the new function to count attempts and update completedCount
+      await updateCompletedCountFromAttempts(assignment.id || '');
       
-      await updateAssignment(assignment.id || '', { 
-        completedCount: newCompletedCount,
-        lastCompletedAt: Timestamp.now(),
-        status: isNowCompleted ? 'completed' : assignment.status
-      });
-      
-      console.log(`GameByToken: Updated assignment - attempts: ${newCompletedCount}/${assignment.timesRequired}, completed: ${isNowCompleted}`);
+      // Log completion status
+      console.log(`GameByToken: Successfully saved progress for assignment: ${assignment.id}`);
       
       // Clear any pending game data
       sessionStorage.removeItem('pending_game_score');
@@ -605,15 +599,8 @@ const GameByToken: React.FC = () => {
                     return Promise.resolve();
                   })
                   .then(() => {
-                    // Update the completedCount
-                    const newCompletedCount = (assignment.completedCount || 0) + 1;
-                    const isNowCompleted = newCompletedCount >= assignment.timesRequired;
-                    
-                    return updateAssignment(assignment.id || '', { 
-                      completedCount: newCompletedCount,
-                      lastCompletedAt: Timestamp.now(),
-                      status: isNowCompleted ? 'completed' : assignment.status
-                    });
+                    // Use the new function to count attempts and update completedCount
+                    return updateCompletedCountFromAttempts(assignment.id || '');
                   })
                   .then(() => {
                     // Clear session storage
@@ -1072,15 +1059,8 @@ const GameByToken: React.FC = () => {
                           return Promise.resolve();
                         })
                         .then(() => {
-                          // Update the completedCount
-                          const newCompletedCount = (assignment.completedCount || 0) + 1;
-                          const isNowCompleted = newCompletedCount >= assignment.timesRequired;
-                          
-                          return updateAssignment(assignment.id || '', { 
-                            completedCount: newCompletedCount,
-                            lastCompletedAt: Timestamp.now(),
-                            status: isNowCompleted ? 'completed' : assignment.status
-                          });
+                          // Use the new function to count attempts and update completedCount
+                          return updateCompletedCountFromAttempts(assignment.id || '');
                         })
                         .then(() => {
                           // Clear session storage
