@@ -26,7 +26,7 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
   onSuccess, 
   onCancel 
 }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, refreshAuthStatus } = useAuth();
   const [studentEmail, setStudentEmail] = useState('');
   const [deadline, setDeadline] = useState('');
   const [timesRequired, setTimesRequired] = useState(1);
@@ -58,10 +58,15 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
     setError(null);
     
     try {
+      // First refresh auth status to ensure token is up to date
+      console.log("AssignGameForm: Refreshing auth status before creating assignment");
+      await refreshAuthStatus();
+      
       // Calculate deadline timestamp (end of day)
       const deadlineDate = new Date(deadline);
       deadlineDate.setHours(23, 59, 59, 999);
       
+      console.log("AssignGameForm: Creating assignment for game:", game.title);
       const assignmentId = await createAssignment({
         teacherId: currentUser.uid,
         studentEmail,
@@ -72,8 +77,11 @@ const AssignGameForm: React.FC<AssignGameFormProps> = ({
         timesRequired,
       });
       
+      console.log("AssignGameForm: Assignment created with ID:", assignmentId);
+      
       // Mark the email as sent to prevent duplicate emails
       await markAssignmentEmailAsSent(assignmentId);
+      console.log("AssignGameForm: Assignment email marked as sent");
       
       setShowSuccess(true);
       setTimeout(() => {
