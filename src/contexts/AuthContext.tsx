@@ -33,6 +33,7 @@ interface AuthContextType {
   updatePassword: (password: string) => Promise<void>;
   signup: (email: string, password: string, recaptchaToken?: string) => Promise<UserCredential>;
   setCurrentUserAsAdmin: () => Promise<boolean>;
+  refreshAuthStatus: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -45,7 +46,8 @@ export const AuthContext = createContext<AuthContextType>({
   updateEmail: async () => {},
   updatePassword: async () => {},
   signup: async () => { return {} as UserCredential; },
-  setCurrentUserAsAdmin: async () => { return false; }
+  setCurrentUserAsAdmin: async () => { return false; },
+  refreshAuthStatus: async () => {}
 });
 
 export const useAuth = () => {
@@ -65,15 +67,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     try {
+      console.log("Checking teacher status for user:", user.email);
+      
       // First check if email is in our demo list
       if (TEACHER_EMAILS.includes(user.email || '')) {
-        setIsTeacher(true);
-        return;
-      }
-      
-      // Then check if the user is in the teachers collection
-      const userDoc = await getDoc(doc(db, 'teachers', user.uid));
-      if (userDoc.exists()) {
+        console.log("User is in TEACHER_EMAILS list");
         setIsTeacher(true);
         return;
       }
@@ -82,10 +80,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userRecord = await getDoc(doc(db, 'users', user.uid));
       if (userRecord.exists()) {
         const role = userRecord.data().role;
+        console.log("User role in users collection:", role);
         // If they have either teacher OR admin role, they should have teacher capabilities
         if (role === 'teacher' || role === 'admin') {
-        setIsTeacher(true);
-        return;
+          setIsTeacher(true);
+          return;
         }
       }
       
@@ -218,6 +217,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Function to manually refresh the authentication status
+  const refreshAuthStatus = async () => {
+    console.log('AuthContext: Manually refreshing auth status');
+    const user = auth.currentUser;
+    
+    if (user) {
+      try {
+        // Force refresh the token to ensure permissions are up to date
+        console.log('AuthContext: Force refreshing auth token');
+        await user.getIdToken(true);  // true forces a refresh from the server
+        console.log('AuthContext: Auth token refreshed successfully');
+      } catch (tokenError) {
+        console.error('AuthContext: Error refreshing token:', tokenError);
+      }
+    }
+    
+    await checkIfTeacher(user);
+    return;
+  };
+
   const value = {
     currentUser,
     isTeacher,
@@ -228,7 +247,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateEmail,
     updatePassword,
     signup,
-    setCurrentUserAsAdmin
+    setCurrentUserAsAdmin,
+    refreshAuthStatus
   };
 
   return (

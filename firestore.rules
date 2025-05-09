@@ -8,7 +8,7 @@ service cloud.firestore {
     
     function isTeacher() {
       return isAuthenticated() && 
-        exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["teacher", "admin"];
     }
     
     function isAdmin() {
@@ -120,8 +120,11 @@ service cloud.firestore {
       // This is more permissive but simpler for now - we could tighten security later
       allow read: if true;
       
+      // For now, allow any authenticated user to create assignments for debugging
+      allow create: if isAuthenticated();
+      
       // Allow teachers to create/update/delete
-      allow create, update, delete: if isTeacherOrAdmin();
+      allow update, delete: if isTeacherOrAdmin() || (isAuthenticated() && resource.data.teacherId == request.auth.uid);
       
       // Allow authenticated students to update assignment status and completion fields
       allow update: if isAuthenticated() && 
@@ -140,12 +143,6 @@ service cloud.firestore {
       
       // Only the teacher who created the assignment can update/delete attempts
       allow update, delete: if isTeacherOrAdmin();
-    }
-    
-    // Teachers collection
-    match /teachers/{teacherId} {
-      allow read: if true;
-      allow write: if false;
     }
     
     // Users collection
