@@ -274,4 +274,43 @@ export const updateCompletedCountFromAttempts = async (assignmentId: string): Pr
     console.error('Error updating completed count from attempts:', error);
     throw error;
   }
+};
+
+/**
+ * Get a game config and assignment using a token
+ * @param token The assignment token
+ * @returns The game config and assignment
+ */
+export const getGameConfigByToken = async (token: string) => {
+  try {
+    // First get the assignment
+    const assignment = await getAssignmentByToken(token);
+    
+    if (!assignment || !assignment.gameId) {
+      console.error(`getGameConfigByToken: Assignment not found or missing gameId for token: ${token}`);
+      return null;
+    }
+    
+    // Get the game config
+    const gameConfigRef = doc(db, 'game_configs', assignment.gameId);
+    const gameConfigSnap = await getDoc(gameConfigRef);
+    
+    if (!gameConfigSnap.exists()) {
+      console.error(`getGameConfigByToken: Game config not found for ID: ${assignment.gameId}`);
+      return null;
+    }
+    
+    const gameConfig = { 
+      id: gameConfigSnap.id, 
+      ...gameConfigSnap.data() 
+    };
+    
+    return {
+      gameConfig,
+      assignment
+    };
+  } catch (error) {
+    console.error(`getGameConfigByToken: Error getting game config for token ${token}:`, error);
+    throw error;
+  }
 }; 

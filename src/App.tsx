@@ -5,6 +5,7 @@ import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
+import EmailAuthHandler from './pages/EmailAuthHandler'
 import GamePlayer from './components/GamePlayer'
 import TeacherDashboard from './pages/TeacherDashboard'
 import ConfigurationRouter from './pages/configurations/ConfigurationRouter'
@@ -308,8 +309,13 @@ const router = createBrowserRouter([
     errorElement: <ErrorBoundary />,
   },
   {
-    path: "/forgot-password",
-    element: <Layout><ForgotPassword /></Layout>,
+    path: "/login-complete",
+    element: <Layout><LoginComplete /></Layout>,
+    errorElement: <ErrorBoundary />,
+  },
+  {
+    path: "/email-auth-feedback",
+    element: <Layout><EmailAuthFeedback /></Layout>,
     errorElement: <ErrorBoundary />,
   },
   {
