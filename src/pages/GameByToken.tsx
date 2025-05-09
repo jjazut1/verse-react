@@ -75,7 +75,8 @@ const GameByToken: React.FC = () => {
     const isDirectAccess = 
       directAccess === 'true' || 
       sessionStorage.getItem('direct_token_access') === 'true' ||
-      (searchParams.get('mode') === 'signIn' && searchParams.get('oobCode'));
+      (searchParams.get('mode') === 'signIn' && searchParams.get('oobCode')) ||
+      document.referrer.includes('email-auth'); // Add check for referrer from email-auth
     
     if (isDirectAccess) {
       console.log('GameByToken: Detected special access mode - bypassing authentication requirement');
