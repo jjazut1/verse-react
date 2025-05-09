@@ -5,7 +5,6 @@ import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
-import EmailAuthHandler from './pages/EmailAuthHandler'
 import GamePlayer from './components/GamePlayer'
 import TeacherDashboard from './pages/TeacherDashboard'
 import ConfigurationRouter from './pages/configurations/ConfigurationRouter'
@@ -15,6 +14,7 @@ import Assignments from './pages/Assignments'
 import GameByToken from './pages/GameByToken'
 import AdminPage from './pages/AdminPage'
 import SetAdminPage from './pages/SetAdminPage'
+import EmailAuthHandler from './pages/EmailAuthHandler'
 import { useEffect } from 'react'
 
 // Create a layout component that includes the Navbar
@@ -309,13 +309,13 @@ const router = createBrowserRouter([
     errorElement: <ErrorBoundary />,
   },
   {
-    path: "/login-complete",
-    element: <Layout><LoginComplete /></Layout>,
+    path: "/forgot-password",
+    element: <Layout><ForgotPassword /></Layout>,
     errorElement: <ErrorBoundary />,
   },
   {
-    path: "/email-auth-feedback",
-    element: <Layout><EmailAuthFeedback /></Layout>,
+    path: "/email-auth",
+    element: <EmailAuthHandler />,
     errorElement: <ErrorBoundary />,
   },
   {

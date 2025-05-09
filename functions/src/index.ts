@@ -139,9 +139,9 @@ export const sendAssignmentEmail = onDocumentCreated("assignments/{assignmentId}
     });
 
     // Updated: Use the assignment token to generate a direct link to the game page
-    // with query parameter format
+    // with query parameter format and improve the email link structure
     const baseUrl = "https://r2process.com";
-    const assignmentLink = `${baseUrl}/play?token=${assignment.linkToken}`;
+    const assignmentLink = `${baseUrl}/email-auth?assignmentId=${assignment.id}&token=${assignment.linkToken}&directAccess=true`;
     
     logger.log("Generated assignment link", { assignmentLink });
 
@@ -239,7 +239,7 @@ export const sendReminderEmails = onSchedule(scheduleOptions, async () => {
       
       // Construct the assignment link with token
       const baseUrl = "https://r2process.com";
-      const assignmentLink = `${baseUrl}/play?token=${assignment.linkToken}`;
+      const assignmentLink = `${baseUrl}/email-auth?assignmentId=${assignment.id}&token=${assignment.linkToken}&directAccess=true`;
       
       // Email content
       const msg = {
@@ -391,7 +391,7 @@ export const testAssignmentEmail = onRequest(
     
     // Generate assignment link
     const baseUrl = "https://r2process.com";
-    const assignmentLink = `${baseUrl}/play?token=${assignment.linkToken}`;
+    const assignmentLink = `${baseUrl}/email-auth?assignmentId=${assignment.id}&token=${assignment.linkToken}&directAccess=true`;
     
     // Create email content
     const msg = {
