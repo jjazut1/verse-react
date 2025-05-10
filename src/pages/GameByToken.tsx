@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getGameConfigByToken } from '../services/gameService';
-import { updateAssignment, createAttempt, updateCompletedCountFromAttempts } from '../services/assignmentService';
+import { 
+  updateAssignment, 
+  createAttempt, 
+  updateCompletedCountFromAttempts, 
+  getAssignmentByToken,
+  getGameConfigByToken
+} from '../services/assignmentService';
 import { Timestamp } from 'firebase/firestore';
 import { sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../config/firebase';
@@ -33,6 +38,7 @@ const GameByToken: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [showAuthForm, setShowAuthForm] = useState(false);
+  const [isEmailLinkAccess, setIsEmailLinkAccess] = useState(false);
   
   // Check authentication status on component mount
   useEffect(() => {
@@ -50,95 +56,103 @@ const GameByToken: React.FC = () => {
     return () => unsubscribe();
   }, []);
   
+  // Enhanced logging for token checking
   useEffect(() => {
-    // Validate token parameter
-    if (!token) {
-      console.error("GameByToken: Missing token parameter");
-      setError("Invalid game link. Please check the URL and try again.");
-      setLoading(false);
-      return;
-    }
-    console.log("GameByToken: Processing token", token);
+    const token = searchParams.get('token');
+    const directAccess = searchParams.get('directAccess');
     
-    // Check if the URL is a sign-in link
-    if (isSignInWithEmailLink(auth, window.location.href)) {
-      // Get the email from localStorage - we stored it when we sent the link
-      let email = window.localStorage.getItem('emailForSignIn');
-      
-      // If we don't have the email, ask for it
-      if (!email) {
-        email = window.prompt('Please provide your email for confirmation');
-      }
-      
-      if (email) {
-        setIsAuthenticating(true);
-        // Sign in with the email link
-        signInWithEmailLink(auth, email, window.location.href)
-          .then((result) => {
-            // Clear the email from storage
-            window.localStorage.removeItem('emailForSignIn');
-            // Continue loading the game
-            setIsAuthenticated(true);
-            setCurrentUser(result.user);
-            console.log('Successfully authenticated via email link:', { email: result.user?.email });
-            loadGameAndAssignment(token);
-            setIsAuthenticating(false);
-          })
-          .catch((error) => {
-            console.error('Error signing in with email link:', error);
-            setError('Failed to authenticate. Please try accessing the game from your email again.');
-            setIsAuthenticating(false);
-          });
-      }
-    } else {
-      // Not a sign-in link, just load the game
-      // but we'll check authentication status later before saving progress
+    console.log('GameByToken: checking for token access mode:', {
+      hasOobCodeInReferrer: document.referrer.includes('oobCode='),
+      hasOobCodeInUrl: searchParams.get('oobCode'),
+      hasAssignmentId: searchParams.get('assignmentId'),
+      hasModeSignIn: searchParams.get('mode') === 'signIn',
+      directAccessParam: directAccess,
+      sessionStorageDirectAccess: sessionStorage.getItem('direct_token_access'),
+      token: token?.substring(0, 8) + '...' // Show first 8 chars for privacy
+    });
+    
+    // Check if this is direct access from email link
+    const isDirectAccess = 
+      directAccess === 'true' || 
+      sessionStorage.getItem('direct_token_access') === 'true' ||
+      (searchParams.get('mode') === 'signIn' && searchParams.get('oobCode')) ||
+      document.referrer.includes('email-auth'); // Add check for referrer from email-auth
+    
+    if (isDirectAccess) {
+      console.log('GameByToken: Detected special access mode - bypassing authentication requirement');
+      sessionStorage.setItem('direct_token_access', 'true');
+      setIsEmailLinkAccess(true);
+    }
+    
+    if (token) {
+      console.log(`GameByToken: Processing token ${token}`);
       loadGameAndAssignment(token);
     }
-  }, [token]);
+  }, [searchParams]);
   
-  // Load the game configuration and assignment using the token
   const loadGameAndAssignment = async (tokenValue: string) => {
     if (!tokenValue) {
       setError("Invalid game token");
       setLoading(false);
+      console.error("GameByToken: Missing token parameter");
       return;
+    }
+    
+    // Check for direct access indicators
+    const directAccess = searchParams.get('directAccess') === 'true' || 
+                          sessionStorage.getItem('direct_token_access') === 'true';
+    if (directAccess) {
+      console.log('GameByToken: Loading assignment with direct access mode');
+      setIsEmailLinkAccess(true);
     }
     
     setLoading(true);
     setError(null);
     
     try {
-      console.log(`GameByToken: Loading game config for token: ${tokenValue}`);
-      const result = await getGameConfigByToken(tokenValue);
+      console.log(`GameByToken: Loading assignment for token: ${tokenValue}`);
+      const assignment = await getAssignmentByToken(tokenValue);
       
-      if (!result || !result.gameConfig || !result.assignment) {
-        throw new Error("Invalid game data received");
+      if (!assignment) {
+        setError("Assignment not found");
+        setLoading(false);
+        console.error(`GameByToken: Assignment not found for token: ${tokenValue}`);
+        return;
       }
       
-      setGameConfig(result.gameConfig);
-      setAssignment(result.assignment);
+      console.log(`GameByToken: Successfully found assignment:`, assignment);
+      setAssignment(assignment);
       
-      // Pre-fill the authentication email
-      if (result.assignment.studentEmail) {
-        setAuthEmail(result.assignment.studentEmail);
-        console.log('Pre-filled auth email:', result.assignment.studentEmail);
+      console.log(`GameByToken: Loading game config for gameId: ${assignment.gameId}`);
+      try {
+        const result = await getGameConfigByToken(tokenValue);
+        if (result && result.gameConfig) {
+          console.log(`GameByToken: Successfully loaded game config:`, result.gameConfig);
+          setGameConfig(result.gameConfig);
+        } else {
+          setError("Game configuration not found");
+          console.error(`GameByToken: Game config not found for token: ${tokenValue}`);
+        }
+      } catch (configError) {
+        console.error("GameByToken: Error loading game config:", configError);
+        setError("Failed to load game configuration");
       }
-    } catch (err) {
-      console.error('Error loading game by token:', err);
       
-      // Provide a more specific error message for the user
-      if (err instanceof Error && err.message.includes('permissions')) {
-        setError(
-          'Access denied. This link is specific to the email recipient and cannot be shared. ' +
-          'Please check that you are using the correct link from your email or authenticate below.'
-        );
-      } else if (err instanceof Error && err.message.includes('not found')) {
-        setError('Assignment not found. The link may be expired or invalid.');
-      } else {
-        setError('Failed to load the game. Please try again or contact your teacher.');
+      setLoading(false);
+      
+      // Set direct access mode for auth bypass
+      if (directAccess) {
+        console.log(`GameByToken: Direct access parameter detected in URL`);
+        sessionStorage.setItem('direct_token_access', 'true');
+        
+        // Auto-authenticate for direct access
+        console.log(`GameByToken: Setting authenticated state to true for direct access`);
+        setIsAuthenticated(true);
+        console.log('Authentication state overridden for direct access:', { authenticated: true });
       }
-    } finally {
+    } catch (error) {
+      console.error("GameByToken: Error loading assignment:", error);
+      setError("Failed to load assignment");
       setLoading(false);
     }
   };

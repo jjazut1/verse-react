@@ -14,6 +14,7 @@ import Assignments from './pages/Assignments'
 import GameByToken from './pages/GameByToken'
 import AdminPage from './pages/AdminPage'
 import SetAdminPage from './pages/SetAdminPage'
+import EmailAuthHandler from './pages/EmailAuthHandler'
 import { useEffect } from 'react'
 
 // Create a layout component that includes the Navbar
@@ -310,6 +311,11 @@ const router = createBrowserRouter([
   {
     path: "/forgot-password",
     element: <Layout><ForgotPassword /></Layout>,
+    errorElement: <ErrorBoundary />,
+  },
+  {
+    path: "/email-auth",
+    element: <EmailAuthHandler />,
     errorElement: <ErrorBoundary />,
   },
   {
