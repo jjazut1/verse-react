@@ -108,10 +108,10 @@ exports.sendAssignmentEmail = (0, firestore_1.onDocumentCreated)("assignments/{a
             month: "long",
             day: "numeric",
         });
-        // Updated: Use the assignment token to generate a direct link to the assignment page
-        // instead of the game page with token parameter
+        // Updated: Use the assignment token to generate a direct link to the game page
+        // with query parameter format
         const baseUrl = "https://r2process.com";
-        const assignmentLink = `${baseUrl}/assignment/${assignment.linkToken}`;
+        const assignmentLink = `${baseUrl}/play?token=${assignment.linkToken}`;
         logger.log("Generated assignment link", { assignmentLink });
         const msg = {
             to: assignment.studentEmail,
@@ -195,7 +195,7 @@ exports.sendReminderEmails = (0, scheduler_1.onSchedule)(scheduleOptions, async 
             });
             // Construct the assignment link with token
             const baseUrl = "https://r2process.com";
-            const assignmentLink = `${baseUrl}/assignment/${assignment.linkToken}`;
+            const assignmentLink = `${baseUrl}/play?token=${assignment.linkToken}`;
             // Email content
             const msg = {
                 to: assignment.studentEmail,
@@ -327,7 +327,7 @@ exports.testAssignmentEmail = (0, https_1.onRequest)({
         });
         // Generate assignment link
         const baseUrl = "https://r2process.com";
-        const assignmentLink = `${baseUrl}/assignment/${assignment.linkToken}`;
+        const assignmentLink = `${baseUrl}/play?token=${assignment.linkToken}`;
         // Create email content
         const msg = {
             to: assignment.studentEmail,

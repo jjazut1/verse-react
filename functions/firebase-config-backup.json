@@ -1,0 +1,13 @@
+{
+  "app": {
+    "url": "https://verse-react.vercel.app"
+  },
+  "email": {
+    "user": "james@learnwithverse.com",
+    "sender": "Verse Learning <james@learnwithverse.com>",
+    "password": "ibll dnpg dagd klko"
+  },
+  "sendgrid": {
+    "key": "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"
+  }
+}

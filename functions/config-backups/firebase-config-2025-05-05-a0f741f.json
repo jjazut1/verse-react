@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "gitCommitHash": "a0f741f90ffc4966a976650d16b1ed8fa2f35cce",
+    "date": "2025-05-05",
+    "description": "Firebase Functions configuration backup"
+  },
+  "config": {
+    "app": {
+      "url": "https://verse-react.vercel.app"
+    },
+    "email": {
+      "user": "james@learnwithverse.com",
+      "sender": "Verse Learning <james@learnwithverse.com>",
+      "password": "ibll dnpg dagd klko"
+    },
+    "sendgrid": {
+      "key": "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"
+    }
+  }
+}
