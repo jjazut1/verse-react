@@ -72,7 +72,9 @@ export const createAssignment = async (assignmentData: Omit<Assignment, 'id' | '
       completedCount: 0,
       createdAt: Timestamp.now(),
       // Flag to track if email is sent - this will be used by the Cloud Function
-      emailSent: false
+      emailSent: false,
+      // Explicitly disable email link authentication to use the simple token approach
+      useEmailLinkAuth: false
     };
     
     // Create assignment document in Firestore

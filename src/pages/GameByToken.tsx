@@ -97,24 +97,6 @@ const GameByToken: React.FC = () => {
     }
   }, [token]);
   
-  // Add a new effect to show authentication form immediately if user is not authenticated
-  useEffect(() => {
-    // Once the game config and assignment are loaded and we know the user isn't authenticated
-    if (!loading && gameConfig && assignment && !isAuthenticated && !currentUser) {
-      // Show the authentication form right away
-      if (assignment.studentEmail) {
-        setAuthEmail(assignment.studentEmail);
-        console.log('Pre-filling auth email for immediate authentication:', assignment.studentEmail);
-      }
-      
-      // Only show the form if we're not already in the process of authenticating
-      if (!isAuthenticating && !showAuthForm) {
-        console.log('Showing authentication form immediately');
-        setShowAuthForm(true);
-      }
-    }
-  }, [loading, gameConfig, assignment, isAuthenticated, currentUser, isAuthenticating, showAuthForm]);
-  
   // Load the game configuration and assignment using the token
   const loadGameAndAssignment = async (tokenValue: string) => {
     if (!tokenValue) {
@@ -244,13 +226,17 @@ const GameByToken: React.FC = () => {
   
   // Handle start game button click
   const handleStartGame = () => {
-    if (!studentNameSubmitted) {
-      if (!studentName.trim()) {
-        alert('Please enter your name to continue.');
-        return;
-      }
-      setStudentNameSubmitted(true);
+    // If student name is empty, use the student email or 'Student' as default
+    if (!studentName.trim() && assignment && assignment.studentEmail) {
+      // Extract name from email (everything before @)
+      const emailName = assignment.studentEmail.split('@')[0];
+      setStudentName(emailName);
+    } else if (!studentName.trim()) {
+      setStudentName('Student');
     }
+    
+    // Automatically set studentNameSubmitted to true
+    setStudentNameSubmitted(true);
     
     // Clear any previous save errors
     setSaveError(null);
@@ -682,7 +668,7 @@ const GameByToken: React.FC = () => {
     </div>
   );
   
-  // Render student name form
+  // Render student name form - SIMPLIFIED VERSION WITHOUT NAME INPUT
   const renderStudentNameForm = () => (
     <div style={{
       backgroundColor: 'white',
@@ -699,10 +685,10 @@ const GameByToken: React.FC = () => {
         marginBottom: 'var(--spacing-4)',
         textAlign: 'center'
       }}>
-        Before You Start
+        Ready to Start
       </h2>
       
-      {assignment && (
+      {assignment && assignment.studentEmail && (
         <div style={{ 
           marginBottom: 'var(--spacing-4)',
           backgroundColor: 'var(--color-info-50)',
@@ -711,38 +697,9 @@ const GameByToken: React.FC = () => {
           fontSize: 'var(--font-size-sm)',
           color: 'var(--color-info-700)'
         }}>
-          <p>You're authenticated as: <strong>{assignment.studentEmail}</strong></p>
-          <p style={{ marginTop: 'var(--spacing-2)' }}>This unique link was sent specifically to you.</p>
+          <p>Assignment for: <strong>{assignment.studentEmail}</strong></p>
         </div>
       )}
-      
-      <div style={{ marginBottom: 'var(--spacing-4)' }}>
-        <label 
-          htmlFor="studentName"
-          style={{
-            display: 'block',
-            fontSize: 'var(--font-size-sm)',
-            color: 'var(--color-gray-700)',
-            marginBottom: 'var(--spacing-1)'
-          }}
-        >
-          Your Name
-        </label>
-        <input
-          id="studentName"
-          type="text"
-          value={studentName}
-          onChange={(e) => setStudentName(e.target.value)}
-          placeholder="Enter your name"
-          style={{
-            width: '100%',
-            padding: 'var(--spacing-2)',
-            border: '1px solid var(--color-gray-300)',
-            borderRadius: 'var(--border-radius-sm)',
-            fontSize: 'var(--font-size-md)'
-          }}
-        />
-      </div>
       
       <button
         onClick={handleStartGame}
@@ -872,9 +829,12 @@ const GameByToken: React.FC = () => {
     <div style={{ 
       padding: 'var(--spacing-4)',
       maxWidth: '1200px',
-      margin: '0 auto'
+      margin: '0 auto',
+      position: 'relative',
+      minHeight: '100vh',
+      paddingBottom: '80px' // Much more substantial padding to account for the fixed bar
     }}>
-      {/* Authentication Modal - Show when needed */}
+      {/* Authentication Modal - Show only when explicitly needed for progress saving */}
       {showAuthForm && (
         <div style={{
           position: 'fixed',
@@ -1170,8 +1130,8 @@ const GameByToken: React.FC = () => {
             {gameConfig.name}
           </h1>
           
-          {/* Authentication status indicator - Now more prominent */}
-          {isAuthenticated && currentUser ? (
+          {/* Hide the authentication status indicator by default */}
+          {isAuthenticated && currentUser && false && (
             <div style={{
               margin: 'var(--spacing-4) 0',
               padding: 'var(--spacing-3)',
@@ -1185,7 +1145,10 @@ const GameByToken: React.FC = () => {
               <span style={{ marginRight: 'var(--spacing-2)' }}>✓</span>
               <strong>Authenticated as: {currentUser.email}</strong>
             </div>
-          ) : (
+          )}
+          
+          {/* Hide the non-authenticated warning completely */}
+          {!isAuthenticated && !currentUser && false && (
             <div style={{
               margin: 'var(--spacing-4) 0',
               padding: 'var(--spacing-3)',
@@ -1245,42 +1208,38 @@ const GameByToken: React.FC = () => {
           )}
           
           <div style={{
-            marginBottom: 'var(--spacing-6)',
             display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--spacing-2)'
+            flexDirection: 'row',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 'var(--spacing-4)',
+            padding: 'var(--spacing-3)',
+            backgroundColor: 'var(--color-gray-100)',
+            borderRadius: 'var(--border-radius-sm)',
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 10,
+            boxShadow: '0 -2px 5px rgba(0, 0, 0, 0.1)',
+            height: '50px' // Fixed height for the bar
           }}>
-            <p><strong>Due Date:</strong> {formatDate(assignment.deadline.toDate())}</p>
-            <p><strong>Required Attempts:</strong> {assignment.timesRequired}</p>
-            <p><strong>Completed Attempts:</strong> {assignment.completedCount || 0}</p>
+            <span><strong>Due:</strong> {formatDate(assignment.deadline.toDate())}</span>
+            <span style={{ borderLeft: '1px solid var(--color-gray-300)', paddingLeft: 'var(--spacing-4)' }}>
+              <strong>Required:</strong> {assignment.timesRequired}
+            </span>
+            <span style={{ borderLeft: '1px solid var(--color-gray-300)', paddingLeft: 'var(--spacing-4)' }}>
+              <strong>Completed:</strong> {assignment.completedCount || 0}
+            </span>
           </div>
           
-          {/* Only show the game if authenticated or after they've submitted their name */}
-          {!isPlaying ? (
-            !studentNameSubmitted ? renderStudentNameForm() : (
-              <button
-                onClick={handleStartGame}
-                style={{
-                  padding: 'var(--spacing-3) var(--spacing-6)',
-                  backgroundColor: 'var(--color-primary-600)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 'var(--border-radius-sm)',
-                  fontSize: 'var(--font-size-lg)',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  display: 'block',
-                  margin: '0 auto'
-                }}
-              >
-                Start Game
-              </button>
-            )
-          ) : (
+          {/* Only show the game if playing, otherwise show the simplified form */}
+          {!isPlaying ? renderStudentNameForm() : (
             <div style={{ 
               backgroundColor: 'white',
               borderRadius: 'var(--border-radius-md)',
               padding: 'var(--spacing-4)',
+              marginBottom: '70px', // Increased bottom margin to ensure content doesn't go under the fixed bar
               boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
             }}>
               {renderGame()}
@@ -1289,24 +1248,13 @@ const GameByToken: React.FC = () => {
         </div>
       ) : (
         // If we don't have assignment and game data yet but no error occurred,
-        // show the authentication form
-        <>
-          {isAuthenticated && currentUser ? (
-            <div style={{
-              backgroundColor: 'var(--color-success-50)',
-              color: 'var(--color-success-700)',
-              padding: 'var(--spacing-4)',
-              borderRadius: 'var(--border-radius-md)',
-              marginBottom: 'var(--spacing-4)',
-              textAlign: 'center'
-            }}>
-              <p>You are authenticated as: <strong>{currentUser.email}</strong></p>
-              <p>Loading your assignment...</p>
-            </div>
-          ) : (
-            renderAuthenticationForm()
-          )}
-        </>
+        // show a simple loading message
+        <div style={{
+          textAlign: 'center',
+          padding: 'var(--spacing-8)'
+        }}>
+          <p>Loading your assignment...</p>
+        </div>
       )}
     </div>
   );
