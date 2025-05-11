@@ -38,26 +38,6 @@ export const markAssignmentEmailAsSent = async (assignmentId: string): Promise<v
   }
 };
 
-// Get a single assignment by ID
-export const getAssignment = async (assignmentId: string): Promise<Assignment | null> => {
-  try {
-    const docRef = doc(db, 'assignments', assignmentId);
-    const docSnap = await getDoc(docRef);
-    
-    if (docSnap.exists()) {
-      return {
-        id: docSnap.id,
-        ...docSnap.data(),
-      } as Assignment;
-    } else {
-      return null;
-    }
-  } catch (error) {
-    console.error('Error getting assignment:', error);
-    throw error;
-  }
-};
-
 // Create a new assignment
 export const createAssignment = async (assignmentData: Omit<Assignment, 'id' | 'linkToken' | 'status' | 'completedCount' | 'createdAt'>): Promise<string> => {
   try {
@@ -130,34 +110,6 @@ export const getAssignmentAttempts = async (assignmentId: string): Promise<Attem
     return attempts;
   } catch (error) {
     console.error('Error getting assignment attempts:', error);
-    throw error;
-  }
-};
-
-// Get attempts for a specific student and assignment
-export const getStudentAttempts = async (studentId: string, assignmentId: string): Promise<Attempt[]> => {
-  try {
-    const attemptsRef = collection(db, 'attempts');
-    const q = query(
-      attemptsRef, 
-      where('studentId', '==', studentId),
-      where('assignmentId', '==', assignmentId)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    
-    const attempts: Attempt[] = [];
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      attempts.push({
-        id: doc.id,
-        ...data,
-      } as Attempt);
-    });
-    
-    return attempts;
-  } catch (error) {
-    console.error('Error getting student attempts:', error);
     throw error;
   }
 };

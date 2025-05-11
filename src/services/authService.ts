@@ -17,42 +17,6 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 /**
- * Sends an authentication email link to the specified email
- * @param email Email address to send the link to
- * @param redirectUrl URL to redirect to after authentication
- * @returns Promise that resolves when the email has been sent
- */
-export const sendAuthenticationEmailLink = async (email: string, redirectUrl?: string): Promise<void> => {
-  try {
-    let finalRedirectUrl = redirectUrl || window.location.href;
-    
-    // Add email to the URL if it doesn't already have it
-    if (!finalRedirectUrl.includes('email=')) {
-      const separator = finalRedirectUrl.includes('?') ? '&' : '?';
-      finalRedirectUrl = `${finalRedirectUrl}${separator}email=${encodeURIComponent(email)}`;
-    }
-    
-    const actionCodeSettings = {
-      // URL you want to redirect back to after sign-in
-      url: finalRedirectUrl,
-      handleCodeInApp: true
-    };
-
-    // Store the email locally so we can access it after the user clicks the link
-    localStorage.setItem('emailForSignIn', email);
-
-    // Send the authentication link
-    await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-    
-    console.log('Auth link sent to:', email);
-    return;
-  } catch (error) {
-    console.error('Error sending email link:', error);
-    throw error;
-  }
-};
-
-/**
  * Checks if the current URL is an email sign-in link
  * @returns boolean indicating if the current URL is a sign-in link
  */
