@@ -8,8 +8,8 @@
   },
   "functions": [
     {
-      "source": "functions",
-      "codebase": "default",
+      "source": "functions-gen1",
+      "codebase": "gen1",
       "ignore": [
         "node_modules",
         ".git",
@@ -18,8 +18,20 @@
       ],
       "predeploy": [
         "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
+    },
+    {
+      "source": "functions-gen2",
+      "codebase": "gen2",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log"
       ],
-      "gen": 1
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
     }
   ],
   "hosting": [
@@ -101,23 +113,5 @@
         }
       ]
     }
-  ],
-  "emulators": {
-    "auth": {
-      "port": 9099
-    },
-    "functions": {
-      "port": 5001
-    },
-    "firestore": {
-      "port": 8080
-    },
-    "hosting": {
-      "port": 5000
-    },
-    "ui": {
-      "enabled": true
-    },
-    "singleProjectMode": true
-  }
+  ]
 }
