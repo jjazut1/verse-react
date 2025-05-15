@@ -28,9 +28,10 @@ import {
   FormControl,
   FormLabel,
   Input,
-  Badge
+  Badge,
+  Tooltip,
 } from '@chakra-ui/react';
-import { DeleteIcon, EditIcon, AddIcon } from '@chakra-ui/icons';
+import { DeleteIcon, EditIcon, AddIcon, InfoIcon } from '@chakra-ui/icons';
 import { 
   collection, 
   getDocs, 
@@ -50,6 +51,10 @@ interface User {
   role: string;
   createdAt?: string;
   updatedAt?: string;
+  lastLogin?: string | null;
+  authUid?: string;
+  linkedToAuth?: boolean;
+  status?: string;
 }
 
 const UserManagement: React.FC = () => {
@@ -74,11 +79,21 @@ const UserManagement: React.FC = () => {
     try {
       const usersCollection = collection(db, 'users');
       const userSnapshot = await getDocs(usersCollection);
-      const usersList = userSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        role: doc.data().role || 'user'
-      })) as User[];
+      const usersList = userSnapshot.docs.map(doc => {
+        const data = doc.data();
+        // Determine account status
+        let status = 'Pending';
+        if (data.authUid || data.linkedToAuth || data.lastLogin) {
+          status = 'Active';
+        }
+        
+        return {
+          id: doc.id,
+          ...data,
+          role: data.role || 'user',
+          status
+        };
+      }) as User[];
       
       setUsers(usersList);
     } catch (err) {
@@ -200,16 +215,26 @@ const UserManagement: React.FC = () => {
         return;
       }
       
-      // Create new user document with a generated ID
+      // Generate a document ID that will be used as the uid field
+      // This will mimic a Firebase Auth UID
+      const newId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      
+      // Create new user document with proper fields that match auth structure
       const newUser = {
         email: newEmail,
         role: newRole,
+        userId: newId, // Include userId field that matches the document ID
+        displayName: newEmail.split('@')[0], // Generate a display name from the email
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        lastLogin: null,
+        // These fields help make it compatible with the auth system's expectations
+        emailVerified: false,
+        disabled: false,
+        status: 'Pending'
       };
       
-      // Add to users collection with a random ID (not optimal but works for now)
-      const newId = Math.random().toString(36).substring(2, 15);
+      // Add to users collection using the generated ID
       await setDoc(doc(db, 'users', newId), newUser);
       
       // Add to our local state
@@ -217,7 +242,7 @@ const UserManagement: React.FC = () => {
       
       toast({
         title: 'User added',
-        description: `${newEmail} has been added with role: ${newRole}`,
+        description: `${newEmail} has been added with role: ${newRole}. They will need to sign in to activate their account.`,
         status: 'success',
         duration: 5000,
         isClosable: true,
@@ -269,6 +294,21 @@ const UserManagement: React.FC = () => {
     
     return <Badge colorScheme={color}>{role}</Badge>;
   };
+  
+  const getStatusBadge = (status: string) => {
+    let color = "gray";
+    
+    switch(status) {
+      case 'Active':
+        color = "green";
+        break;
+      case 'Pending':
+        color = "yellow";
+        break;
+    }
+    
+    return <Badge colorScheme={color}>{status}</Badge>;
+  };
 
   return (
     <Box>
@@ -293,6 +333,16 @@ const UserManagement: React.FC = () => {
           </Button>
         </HStack>
       </HStack>
+      
+      <Box mb={4} p={4} borderWidth="1px" borderRadius="md" bg="blue.50">
+        <HStack>
+          <InfoIcon color="blue.500" />
+          <Text fontSize="sm">
+            Users added through this admin interface need to sign in to fully activate their accounts. 
+            Their account status will change from "Pending" to "Active" after they sign in for the first time.
+          </Text>
+        </HStack>
+      </Box>
 
       {error && (
         <Alert status="error" mb={4}>
@@ -312,6 +362,7 @@ const UserManagement: React.FC = () => {
             <Tr>
               <Th>Email</Th>
               <Th>Role</Th>
+              <Th>Status</Th>
               <Th>Created</Th>
               <Th>Actions</Th>
             </Tr>
@@ -319,13 +370,22 @@ const UserManagement: React.FC = () => {
           <Tbody>
             {users.length === 0 ? (
               <Tr>
-                <Td colSpan={4} textAlign="center">No users found</Td>
+                <Td colSpan={5} textAlign="center">No users found</Td>
               </Tr>
             ) : (
               users.map(user => (
                 <Tr key={user.id}>
                   <Td>{user.email}</Td>
                   <Td>{getRoleBadge(user.role || 'user')}</Td>
+                  <Td>
+                    <Tooltip 
+                      label={user.status === 'Pending' 
+                        ? "User needs to sign in to activate their account" 
+                        : "User has signed in and account is active"}
+                    >
+                      {getStatusBadge(user.status || 'Pending')}
+                    </Tooltip>
+                  </Td>
                   <Td>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</Td>
                   <Td>
                     <HStack spacing={2}>
@@ -396,6 +456,14 @@ const UserManagement: React.FC = () => {
           <ModalHeader>Add New User</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
+            <Alert status="info" mb={4}>
+              <AlertIcon />
+              <Box fontSize="sm">
+                <Text>Users added here must sign in to activate their account.</Text>
+                <Text mt={1}>If using Google Auth, they should use the same email address.</Text>
+              </Box>
+            </Alert>
+            
             <FormControl mb={4}>
               <FormLabel>Email</FormLabel>
               <Input 
