@@ -14,6 +14,11 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       open: true
     },
+    resolve: {
+      alias: {
+        '@popperjs/core': resolve(__dirname, 'node_modules/@popperjs/core/dist/umd/popper.js'),
+      }
+    },
     build: {
       outDir: 'dist',
       sourcemap: true,

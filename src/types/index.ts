@@ -16,6 +16,8 @@ export interface Assignment {
   status: AssignmentStatus;
   createdAt: Timestamp;
   lastCompletedAt?: Timestamp;
+  useEmailLinkAuth?: boolean;
+  emailSent?: boolean;
 }
 
 export interface Attempt {
