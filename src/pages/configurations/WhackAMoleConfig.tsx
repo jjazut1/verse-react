@@ -583,10 +583,17 @@ const WhackAMoleConfig = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [gameCategory, setGameCategory] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isTeacher, setIsTeacher] = useState(false);
   
   // Category templates state
   const [dbTemplates, setDbTemplates] = useState<Record<string, WordCategory>>({});
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  
+  // State for template sources
+  const [blankTemplates, setBlankTemplates] = useState<Record<string, WordCategory>>({});
+  const [categoryTemplates, setCategoryTemplates] = useState<Record<string, WordCategory>>({});
+  const [showOnlyBlankTemplates, setShowOnlyBlankTemplates] = useState(false);
   
   // Category management - updated to use new Category interface
   const [categories, setCategories] = useState<Category[]>([{
@@ -620,23 +627,87 @@ const WhackAMoleConfig = () => {
     // Add other common templates as needed
   ]);
 
+  // Check if user came from home page with a blank template
+  useEffect(() => {
+    // If we have a templateId and it's a navigation from home page
+    if (templateId) {
+      // Check if the template is from blankGameTemplates collection
+      const checkTemplateSource = async () => {
+        try {
+          const blankTemplateRef = doc(db, 'blankGameTemplates', templateId);
+          const blankTemplateSnap = await getDoc(blankTemplateRef);
+          
+          if (blankTemplateSnap.exists()) {
+            console.log('Template is from blankGameTemplates, showing only blank templates in dropdown');
+            setShowOnlyBlankTemplates(true);
+          }
+        } catch (error) {
+          console.error('Error checking template source:', error);
+        }
+      };
+      
+      checkTemplateSource();
+    }
+  }, [templateId]);
+
+  // Check if user is an admin or teacher
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!currentUser) {
+        console.log('No current user');
+        setIsAdmin(false);
+        setIsTeacher(false);
+        return;
+      }
+      
+      try {
+        // Check if user has admin role in users collection
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setIsAdmin(userData.role === 'admin');
+          setIsTeacher(userData.role === 'teacher' || userData.role === 'admin');
+        } else {
+          console.log('User is not an admin or teacher');
+          setIsAdmin(false);
+          setIsTeacher(false);
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
+      }
+    };
+    
+    checkAdminStatus();
+  }, [currentUser]);
+
   // Load category templates from database
   useEffect(() => {
     const fetchCategoryTemplates = async () => {
       setLoadingTemplates(true);
       try {
-        // Query the categoryTemplates collection for 'whack-a-mole' type templates
-        const templatesQuery = query(
-          collection(db, 'categoryTemplates'),
-          where('type', '==', 'whack-a-mole')
-        );
+        // Query both collections for templates
+        const [categoryTemplatesSnapshot, blankTemplatesSnapshot] = await Promise.all([
+          // Query the categoryTemplates collection for 'whack-a-mole' type templates
+          getDocs(query(
+            collection(db, 'categoryTemplates'),
+            where('type', '==', 'whack-a-mole')
+          )),
+          // Query all blankGameTemplates (without filtering by type since it might be missing)
+          getDocs(collection(db, 'blankGameTemplates'))
+        ]);
         
-        const querySnapshot = await getDocs(templatesQuery);
-        const templates: Record<string, WordCategory> = {};
+        console.log('Category templates count:', categoryTemplatesSnapshot.size);
+        console.log('Blank templates count:', blankTemplatesSnapshot.size);
         
-        querySnapshot.forEach((doc) => {
+        const categoryTemplatesMap: Record<string, WordCategory> = {};
+        const blankTemplatesMap: Record<string, WordCategory> = {};
+        
+        // Process category templates
+        categoryTemplatesSnapshot.forEach((doc) => {
           const data = doc.data();
-          console.log(`Loading template ${doc.id}:`, data); // Log the raw data
+          console.log(`Loading category template ${doc.id}:`, data);
           
           // Create a consistent representation for the template
           let processedTemplate: WordCategory = {
@@ -665,7 +736,7 @@ const WhackAMoleConfig = () => {
             if (firstCategory && Array.isArray(firstCategory.words)) {
               processedTemplate.words = firstCategory.words;
             }
-            console.log(`Using ${processedTemplate.categories.length} categories for template ${doc.id}`);
+            console.log(`Using ${processedTemplate.categories?.length} categories for template ${doc.id}`);
           } else if (data.words && Array.isArray(data.words)) {
             // Old format with words field
             processedTemplate.words = data.words;
@@ -677,14 +748,79 @@ const WhackAMoleConfig = () => {
             console.log(`Using words field for template ${doc.id} (single category)`);
           }
           
-          templates[doc.id] = processedTemplate;
-          console.log(`Processed template ${doc.id}:`, processedTemplate);
+          categoryTemplatesMap[doc.id] = processedTemplate;
+          console.log(`Processed category template ${doc.id}:`, processedTemplate);
         });
         
+        // Process blank templates - filter for whack-a-mole type here if needed
+        blankTemplatesSnapshot.forEach((doc) => {
+          const data = doc.data();
+          console.log(`Raw blank template data ${doc.id}:`, data);
+          
+          // Include the template if it's either whack-a-mole type or has no type specified
+          if (!data.type || data.type === 'whack-a-mole') {
+            // Create a consistent representation for the template
+            let processedTemplate: WordCategory = {
+              title: data.title || 'Untitled Template',
+              words: [],
+              gameTime: data.gameTime,
+              pointsPerHit: data.pointsPerHit,
+              penaltyPoints: data.penaltyPoints,
+              bonusPoints: data.bonusPoints,
+              bonusThreshold: data.bonusThreshold,
+              speed: data.speed,
+              instructions: data.instructions,
+              share: data.share
+            };
+            
+            // Handle both template formats: new (with categories) and old (with words)
+            if (data.categories && Array.isArray(data.categories) && data.categories.length > 0) {
+              // New format with categories field - preserve all categories
+              processedTemplate.categories = data.categories.map(cat => ({
+                title: cat.title || '',
+                words: Array.isArray(cat.words) ? cat.words : []
+              }));
+              
+              // For backwards compatibility, still set the words field with first category
+              const firstCategory = data.categories[0];
+              if (firstCategory && Array.isArray(firstCategory.words)) {
+                processedTemplate.words = firstCategory.words;
+              }
+              console.log(`Using ${processedTemplate.categories?.length} categories for blank template ${doc.id}`);
+            } else if (data.words && Array.isArray(data.words)) {
+              // Old format with words field
+              processedTemplate.words = data.words;
+              // Create a default category using these words
+              processedTemplate.categories = [{
+                title: data.title || 'Default Category',
+                words: data.words
+              }];
+              console.log(`Using words field for blank template ${doc.id} (single category)`);
+            }
+            
+            blankTemplatesMap[doc.id] = processedTemplate;
+            console.log(`Processed blank template ${doc.id}:`, processedTemplate);
+          } else {
+            console.log(`Skipped blank template with incorrect type: ${doc.id}, ${data.type}`);
+          }
+        });
+        
+        // Store templates separately
+        setCategoryTemplates(categoryTemplatesMap);
+        setBlankTemplates(blankTemplatesMap);
+        
+        // Combine templates based on whether to show only blank templates
+        const allTemplates = showOnlyBlankTemplates 
+          ? blankTemplatesMap 
+          : {...categoryTemplatesMap, ...blankTemplatesMap};
+        
+        console.log('Total templates loaded:', Object.keys(allTemplates).length);
+        console.log('All template IDs:', Object.keys(allTemplates));
+        
         // If we found templates in the database, use those
-        if (Object.keys(templates).length > 0) {
-          setDbTemplates(templates);
-          console.log('Loaded word category templates from database:', templates);
+        if (Object.keys(allTemplates).length > 0) {
+          setDbTemplates(allTemplates);
+          console.log('Loaded word category templates from database:', allTemplates);
         } else {
           // Otherwise use the default templates as fallback
           // Convert default templates to include categories
@@ -729,7 +865,7 @@ const WhackAMoleConfig = () => {
     };
     
     fetchCategoryTemplates();
-  }, [toast]);
+  }, [toast, showOnlyBlankTemplates]);
 
   // Load existing configuration if templateId is provided
   useEffect(() => {
@@ -993,6 +1129,16 @@ const WhackAMoleConfig = () => {
       });
       return;
     }
+    
+    if (!isAdmin && !isTeacher) {
+      toast({
+        title: "Permission Denied",
+        description: "You must be an admin or teacher to save templates.",
+        status: "error",
+        duration: 5000,
+      });
+      return;
+    }
 
     if (!title.trim()) {
       toast({
@@ -1045,24 +1191,33 @@ const WhackAMoleConfig = () => {
       // Save to the categoryTemplates collection
       const docRef = await addDoc(collection(db, 'categoryTemplates'), templateData);
       
-      // Add the new template to the state with proper structure
-      setDbTemplates({
-        ...dbTemplates,
-        [docRef.id]: {
-          title: templateData.title,
-          words: categoriesForDb[0]?.words || [], // For backwards compatibility
-          categories: categoriesForDb, // Keep all categories
-          // Include the additional properties for proper rendering
-          gameTime: templateData.gameTime,
-          pointsPerHit: templateData.pointsPerHit,
-          penaltyPoints: templateData.penaltyPoints,
-          bonusPoints: templateData.bonusPoints,
-          bonusThreshold: templateData.bonusThreshold,
-          speed: templateData.speed,
-          instructions: templateData.instructions,
-          share: templateData.share
-        }
-      });
+      // Create template object with the expected structure
+      const newTemplate: WordCategory = {
+        title: templateData.title,
+        words: categoriesForDb[0]?.words || [], // For backwards compatibility
+        categories: categoriesForDb, // Keep all categories
+        // Include the additional properties for proper rendering
+        gameTime: templateData.gameTime,
+        pointsPerHit: templateData.pointsPerHit,
+        penaltyPoints: templateData.penaltyPoints,
+        bonusPoints: templateData.bonusPoints,
+        bonusThreshold: templateData.bonusThreshold,
+        speed: templateData.speed,
+        instructions: templateData.instructions,
+        share: templateData.share
+      };
+      
+      // Add the new template to the category templates state
+      setCategoryTemplates(prev => ({
+        ...prev,
+        [docRef.id]: newTemplate
+      }));
+      
+      // Also update the combined templates state
+      setDbTemplates(prev => ({
+        ...prev,
+        [docRef.id]: newTemplate
+      }));
       
       toast({
         title: "Template Saved",
@@ -1432,173 +1587,215 @@ const WhackAMoleConfig = () => {
           </div>
         
           <SimpleGrid columns={[1, null, 2]} spacing={6}>
-        <FormControl mb={4}>
-          <FormLabel>Word Category Template</FormLabel>
-          {loadingTemplates ? (
-            <HStack>
-              <Spinner size="sm" />
-              <Text>Loading templates...</Text>
-            </HStack>
-          ) : (
-            <>
+            <FormControl mb={4}>
+              <FormLabel>Word Category Template</FormLabel>
+              {loadingTemplates ? (
+                <HStack>
+                  <Spinner size="sm" />
+                  <Text>Loading templates...</Text>
+                </HStack>
+              ) : (
+                <>
+                  <Box>
+                    <select 
+                      className="chakra-select apple-input"
+                      value={gameCategory}
+                      onChange={(e) => handleCategoryChange(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        borderRadius: '0.375rem',
+                        borderWidth: '1px',
+                        maxWidth: '400px',
+                        borderColor: 'inherit'
+                      }}
+                    >
+                      <option value="">Select a word category (optional)</option>
+                      
+                      {showOnlyBlankTemplates ? (
+                        <>
+                          {/* Display blank templates only */}
+                          <optgroup label="Blank Templates">
+                            {Object.entries(blankTemplates).map(([key, template]) => (
+                              <option key={key} value={key}>
+                                {template.title}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </>
+                      ) : (
+                        <>
+                          {/* Display blank templates first */}
+                          {Object.keys(blankTemplates).length > 0 && (
+                            <optgroup label="Blank Templates">
+                              {Object.entries(blankTemplates).map(([key, template]) => (
+                                <option key={key} value={key}>
+                                  {template.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          
+                          {/* Then display category templates */}
+                          {Object.keys(categoryTemplates).length > 0 && (
+                            <optgroup label="Word Category Templates">
+                              {Object.entries(categoryTemplates).map(([key, template]) => (
+                                <option key={key} value={key}>
+                                  {template.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </>
+                      )}
+                    </select>
+                  </Box>
+                  <FormHelperText>
+                    {showOnlyBlankTemplates 
+                      ? "Select a blank template to use as a starting point" 
+                      : "Select a preset word category to quickly populate your game"}
+                  </FormHelperText>
+                </>
+              )}
+            </FormControl>
+
+            <FormControl mb={4}>
+              <FormLabel>Configuration Title</FormLabel>
+                    <Input
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Enter a title for this game"
+                      maxW="400px"
+                      className="apple-input"
+                />
+            </FormControl>
+
+            <FormControl mb={4}>
+              <FormLabel>Game Time (seconds)</FormLabel>
+                    <NumberInput
+                      value={gameTime}
+                      onChange={(_, value) => setGameTime(value)}
+                      min={30}
+                      max={300}
+                      maxW="200px"
+                      className="apple-input"
+                    >
+                      <NumberInputField className="apple-input" />
+                      <NumberInputStepper>
+                        <NumberIncrementStepper />
+                        <NumberDecrementStepper />
+                      </NumberInputStepper>
+                    </NumberInput>
+            </FormControl>
+
+            <FormControl mb={4}>
+              <FormLabel>Game Speed</FormLabel>
               <Select
-                value={gameCategory}
-                onChange={(e) => handleCategoryChange(e.target.value)}
-                placeholder="Select a word category (optional)"
-                maxW="400px"
-                className="apple-input"
-              >
-                {Object.entries(dbTemplates).map(([key, template]) => (
-                  <option key={key} value={key}>
-                    {template.title}
-                  </option>
-                ))}
+                    value={gameSpeed}
+                    onChange={(e) => setGameSpeed(Number(e.target.value))}
+                    maxW="300px"
+                    className="apple-input"
+                  >
+                    <option value={1}>Slow (10-12 moles)</option>
+                    <option value={2}>Medium (14-16 moles)</option>
+                    <option value={3}>Fast (17-19 moles)</option>
               </Select>
-              <FormHelperText>
-                Select a preset word category to quickly populate your game
-              </FormHelperText>
-            </>
-          )}
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Configuration Title</FormLabel>
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter a title for this game"
-                  maxW="400px"
-                  className="apple-input"
-            />
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Game Time (seconds)</FormLabel>
-                <NumberInput
-                  value={gameTime}
-                  onChange={(_, value) => setGameTime(value)}
-                  min={30}
-                  max={300}
-                  maxW="200px"
-                  className="apple-input"
-                >
-                  <NumberInputField className="apple-input" />
-                  <NumberInputStepper>
-                    <NumberIncrementStepper />
-                    <NumberDecrementStepper />
-                  </NumberInputStepper>
-                </NumberInput>
-        </FormControl>
-
-        <FormControl mb={4}>
-          <FormLabel>Game Speed</FormLabel>
-          <Select
-                value={gameSpeed}
-                onChange={(e) => setGameSpeed(Number(e.target.value))}
-                maxW="300px"
-                className="apple-input"
-              >
-                <option value={1}>Slow (10-12 moles)</option>
-                <option value={2}>Medium (14-16 moles)</option>
-                <option value={3}>Fast (17-19 moles)</option>
-          </Select>
-          <FormHelperText>Controls how frequently moles appear during the game</FormHelperText>
-        </FormControl>
+              <FormHelperText>Controls how frequently moles appear during the game</FormHelperText>
+            </FormControl>
           </SimpleGrid>
 
-        <FormControl mb={4}>
-          <FormLabel>Game Instructions</FormLabel>
-              <Textarea
-                value={instructions}
-                onChange={(e) => setInstructions(e.target.value)}
-                placeholder="Enter custom instructions for players"
-                rows={3}
-                maxW="800px"
-                className="apple-input"
-            />
-            <FormHelperText>
-              Custom instructions to show on the game start screen. If left empty, default instructions will be shown.
-            </FormHelperText>
-        </FormControl>
-      </Box>
+          <FormControl mb={4}>
+            <FormLabel>Game Instructions</FormLabel>
+                  <Textarea
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="Enter custom instructions for players"
+                    rows={3}
+                    maxW="800px"
+                    className="apple-input"
+                />
+                <FormHelperText>
+                  Custom instructions to show on the game start screen. If left empty, default instructions will be shown.
+                </FormHelperText>
+          </FormControl>
+        </Box>
 
         <Box className="apple-section">
           <div className="apple-section-header">
             <Heading size="md" mb={0}>Scoring</Heading>
           </div>
-        
-          <SimpleGrid columns={[1, null, 2]} spacing={6}>
-        <FormControl mb={4}>
-          <FormLabel>Points Per Hit</FormLabel>
-                <NumberInput
-                  value={pointsPerHit}
-                  onChange={(_, value) => setPointsPerHit(value)}
-                  min={1}
-                  maxW="200px"
-                  className="apple-input"
-                >
-                  <NumberInputField className="apple-input" />
-                  <NumberInputStepper>
-                    <NumberIncrementStepper />
-                    <NumberDecrementStepper />
-                  </NumberInputStepper>
-                </NumberInput>
-        </FormControl>
+        <SimpleGrid columns={[1, null, 2]} spacing={6}>
+      <FormControl mb={4}>
+        <FormLabel>Points Per Hit</FormLabel>
+              <NumberInput
+                value={pointsPerHit}
+                onChange={(_, value) => setPointsPerHit(value)}
+                min={1}
+                maxW="200px"
+                className="apple-input"
+              >
+                <NumberInputField className="apple-input" />
+                <NumberInputStepper>
+                  <NumberIncrementStepper />
+                  <NumberDecrementStepper />
+                </NumberInputStepper>
+              </NumberInput>
+      </FormControl>
 
-        <FormControl mb={4}>
-          <FormLabel>Penalty Points</FormLabel>
-                <NumberInput
-                  value={penaltyPoints}
-                  onChange={(_, value) => setPenaltyPoints(value)}
-                  min={0}
-                  maxW="200px"
-                  className="apple-input"
-                >
-                  <NumberInputField className="apple-input" />
-                  <NumberInputStepper>
-                    <NumberIncrementStepper />
-                    <NumberDecrementStepper />
-                  </NumberInputStepper>
-                </NumberInput>
-                <FormHelperText>Points deducted for missing a correct word</FormHelperText>
-        </FormControl>
+      <FormControl mb={4}>
+        <FormLabel>Penalty Points</FormLabel>
+              <NumberInput
+                value={penaltyPoints}
+                onChange={(_, value) => setPenaltyPoints(value)}
+                min={0}
+                maxW="200px"
+                className="apple-input"
+              >
+                <NumberInputField className="apple-input" />
+                <NumberInputStepper>
+                  <NumberIncrementStepper />
+                  <NumberDecrementStepper />
+                </NumberInputStepper>
+              </NumberInput>
+              <FormHelperText>Points deducted for missing a correct word</FormHelperText>
+      </FormControl>
 
-        <FormControl mb={4}>
-          <FormLabel>Bonus Points</FormLabel>
-                <NumberInput
-                  value={bonusPoints}
-                  onChange={(_, value) => setBonusPoints(value)}
-                  min={0}
-                  maxW="200px"
-                  className="apple-input"
-                >
-                  <NumberInputField className="apple-input" />
-                  <NumberInputStepper>
-                    <NumberIncrementStepper />
-                    <NumberDecrementStepper />
-                  </NumberInputStepper>
-                </NumberInput>
-        </FormControl>
+      <FormControl mb={4}>
+        <FormLabel>Bonus Points</FormLabel>
+              <NumberInput
+                value={bonusPoints}
+                onChange={(_, value) => setBonusPoints(value)}
+                min={0}
+                maxW="200px"
+                className="apple-input"
+              >
+                <NumberInputField className="apple-input" />
+                <NumberInputStepper>
+                  <NumberIncrementStepper />
+                  <NumberDecrementStepper />
+                </NumberInputStepper>
+              </NumberInput>
+      </FormControl>
 
-        <FormControl mb={4}>
-          <FormLabel>Bonus Threshold</FormLabel>
-                <NumberInput
-                  value={bonusThreshold}
-                  onChange={(_, value) => setBonusThreshold(value)}
-                  min={1}
-                  maxW="200px"
-                  className="apple-input"
-                >
-                  <NumberInputField className="apple-input" />
-                  <NumberInputStepper>
-                    <NumberIncrementStepper />
-                    <NumberDecrementStepper />
-                  </NumberInputStepper>
-                </NumberInput>
-          <FormHelperText>Number of consecutive correct hits needed to trigger bonus points</FormHelperText>
-        </FormControl>
-          </SimpleGrid>
-      </Box>
+      <FormControl mb={4}>
+        <FormLabel>Bonus Threshold</FormLabel>
+              <NumberInput
+                value={bonusThreshold}
+                onChange={(_, value) => setBonusThreshold(value)}
+                min={1}
+                maxW="200px"
+                className="apple-input"
+              >
+                <NumberInputField className="apple-input" />
+                <NumberInputStepper>
+                  <NumberIncrementStepper />
+                  <NumberDecrementStepper />
+                </NumberInputStepper>
+              </NumberInput>
+        <FormHelperText>Number of consecutive correct hits needed to trigger bonus points</FormHelperText>
+      </FormControl>
+    </SimpleGrid>
+</Box>
 
         <Box className="apple-section">
           <div className="apple-section-header">
@@ -1869,22 +2066,21 @@ const WhackAMoleConfig = () => {
           <div className="apple-section-header">
             <Heading size="md" mb={0}>Templates</Heading>
           </div>
-        <FormControl mb={4}>
-          <Button 
-            colorScheme="teal" 
-            size="md" 
-            onClick={handleSaveAsTemplate}
-              isDisabled={!currentUser || categories.length === 0 || (categories[0]?.items.length || 0) === 0}
-            mb={2}
-            width="100%"
-          >
-            Save as Word Template
-          </Button>
-          <FormHelperText>
-            Save your current word category as a reusable template for future games
-          </FormHelperText>
-        </FormControl>
-      </Box>
+          
+          {(isAdmin || isTeacher) && (
+            <Button
+              width="100%"
+              colorScheme="teal"
+              size="md"
+              mb={4}
+              onClick={handleSaveAsTemplate}
+            >
+              Save as Word Template
+            </Button>
+          )}
+          
+          <Text fontSize="sm">Save your current word category as a reusable template for future games</Text>
+        </Box>
 
         <Box className="apple-section">
           <div className="apple-section-header">

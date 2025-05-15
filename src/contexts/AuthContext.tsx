@@ -13,7 +13,7 @@ import {
   UserCredential
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 // For demo purposes, we'll check if user email is in this list to determine if they're a teacher
@@ -74,7 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Check if they have a teacher or admin role in their user document
       try {
         console.log(`Checking user document for uid: ${user.uid}`);
-        const userRecord = await getDoc(doc(db, 'users', user.uid));
+        const userDoc = doc(db, 'users', user.uid);
+        const userRecord = await getDoc(userDoc);
         
         if (userRecord.exists()) {
           const userData = userRecord.data();
@@ -85,16 +86,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (role === 'teacher' || role === 'admin') {
             console.log(`User has role: ${role}, setting isTeacher to true`);
             setIsTeacher(true);
+            
+            // Update lastLogin timestamp
+            try {
+              await setDoc(userDoc, {
+                lastLogin: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+              console.log("Updated user lastLogin timestamp");
+            } catch (updateError) {
+              console.error("Error updating lastLogin:", updateError);
+              // Non-critical error, continue
+            }
+            
             return;
           }
         } else {
-          console.log(`User document does not exist for uid: ${user.uid}`);
+          console.log(`User document does not exist for uid: ${user.uid}, checking by email`);
+          
+          // If user document doesn't exist with UID, try to find by email
+          if (user.email) {
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('email', '==', user.email));
+            const querySnapshot = await getDocs(q);
+            
+            if (!querySnapshot.empty) {
+              // Found user by email
+              const existingUserDoc = querySnapshot.docs[0];
+              const existingUserData = existingUserDoc.data();
+              console.log(`Found user document by email: ${existingUserDoc.id}`, existingUserData);
+              
+              // If they have a teacher or admin role, set isTeacher to true
+              if (existingUserData.role === 'teacher' || existingUserData.role === 'admin') {
+                console.log(`User has role: ${existingUserData.role}, setting isTeacher to true`);
+                setIsTeacher(true);
+                
+                // Create a new document with the user's actual UID
+                try {
+                  console.log(`Creating new user document with correct UID: ${user.uid}`);
+                  await setDoc(doc(db, 'users', user.uid), {
+                    ...existingUserData,
+                    userId: user.uid,
+                    updatedAt: new Date().toISOString(),
+                    lastLogin: new Date().toISOString(),
+                    displayName: user.displayName || existingUserData.displayName || user.email.split('@')[0],
+                    email: user.email,
+                    emailVerified: user.emailVerified,
+                    role: existingUserData.role  // Preserve their original role
+                  });
+                  
+                  console.log("Successfully created user document with correct UID");
+                  
+                  // Now check if we have permission to update the original document
+                  // This would be nice to have but not critical since we now have the new document
+                  try {
+                    await updateDoc(doc(db, 'users', existingUserDoc.id), {
+                      linkedToAuth: true,
+                      authUid: user.uid,
+                      lastLogin: new Date().toISOString(),
+                      updatedAt: new Date().toISOString()
+                    });
+                    console.log("Updated original user document with authUid reference");
+                  } catch (linkError) {
+                    console.warn("Could not update original document with authUid reference:", linkError);
+                    // This is not critical, we can continue
+                  }
+                } catch (createError) {
+                  console.error("Error creating user document with correct UID:", createError);
+                  // Even though document creation failed, we still know they're a teacher
+                  // So we can continue with the current isTeacher state
+                }
+                
+                return;
+              }
+            }
+          }
         }
       } catch (docError) {
         console.error(`Error reading user document:`, docError);
         // Continue execution - don't throw the error
       }
       
+      // If we've made it this far, user is not a teacher
       setIsTeacher(false);
     } catch (error) {
       console.error('Error checking teacher status:', error);

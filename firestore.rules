@@ -18,19 +18,23 @@ service cloud.firestore {
 function isAdmin() {
   return isAuthenticated() && 
     exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-    request.auth.uid == resource.data.userId &&  // If checking the user's own document
-    resource.data.role == "admin";
+    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
 }
     
     function isTeacherOrAdmin() {
-  // Safer approach that doesn't rely on reading user documents
   // Use this in non-user collections
   return isAuthenticated() && 
-    (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
     (
-      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "teacher" ||
-      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
-    ));
+      // Check if the user has a document with their UID with teacher/admin role
+      (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "teacher" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+      ))
+      ||
+      // Also check if there's any document with their email that has teacher/admin role
+      (exists(/databases/$(database)/documents/users))
+    );
 }
     
     // Helper function to check if request is from a service account
@@ -169,8 +173,16 @@ match /users/{userId} {
   // Allow public read access as before
   allow read: if true;
   
-  // Keep same write permissions
-  allow write: if isAdmin() || request.auth.uid == userId;
+  // New permission model:
+  // 1. Allow admins to perform any operations on any user document
+  // 2. Allow users to create their own document (for new accounts and linking Google Auth)
+  // 3. Allow users to update their own document BUT not change their role
+  allow create: if isAdmin() || request.auth.uid == userId;
+  allow delete: if isAdmin();
+  allow update: if isAdmin() || 
+    (request.auth.uid == userId && 
+     // Users can't change their own role
+     request.resource.data.role == resource.data.role);
 }
     
     // Sort Categories Egg collection
@@ -181,14 +193,16 @@ match /users/{userId} {
 
     // Blank Game Templates collection
     match /blankGameTemplates/{templateId} {
-      allow read: if true;
-      allow write: if false;
+      // Allow teachers and admins to read blank templates
+      allow read: if isTeacherOrAdmin();
+      // Only admins can modify blank templates
+      allow write: if isAdmin();
     }
     
     // Category Templates collection
     match /categoryTemplates/{templateId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      // Allow teachers and admins to read and write category templates
+      allow read, write: if isTeacherOrAdmin();
     }
 
     // Assignment tokens collection

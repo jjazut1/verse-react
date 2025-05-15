@@ -392,6 +392,7 @@ const SortCategoriesEggConfig = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [templateKey, setTemplateKey] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isTeacher, setIsTeacher] = useState(false);
   
   // Category templates state
   const [dbTemplates, setDbTemplates] = useState<Record<string, CategoryTemplate>>({});
@@ -495,7 +496,8 @@ const SortCategoriesEggConfig = () => {
   useEffect(() => {
     const checkAdminStatus = async () => {
       if (!currentUser) {
-        console.log('No current user');
+        setIsAdmin(false);
+        setIsTeacher(false);
         return;
       }
       
@@ -504,61 +506,132 @@ const SortCategoriesEggConfig = () => {
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userDoc = await getDoc(userDocRef);
         
-        if (userDoc.exists() && userDoc.data().role === 'admin') {
-            console.log('User is an admin!');
-            setIsAdmin(true);
-          } else {
-          console.log('User is not an admin');
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setIsAdmin(userData.role === 'admin');
+          setIsTeacher(userData.role === 'teacher' || userData.role === 'admin');
+        } else {
           setIsAdmin(false);
+          setIsTeacher(false);
         }
       } catch (error) {
         console.error('Error checking admin status:', error);
+        setIsAdmin(false);
+        setIsTeacher(false);
       }
     };
     
     checkAdminStatus();
   }, [currentUser]);
 
-  // Load category templates from database
+  // State for template sources
+  const [blankTemplates, setBlankTemplates] = useState<Record<string, CategoryTemplate>>({});
+  const [categoryTemplates, setCategoryTemplates] = useState<Record<string, CategoryTemplate>>({});
+  const [showOnlyBlankTemplates, setShowOnlyBlankTemplates] = useState(false);
+  
+  // Check if user came from home page with a blank template
+  useEffect(() => {
+    // If we have a templateId and it's a navigation from home page
+    if (templateId) {
+      // Check if the template is from blankGameTemplates collection
+      const checkTemplateSource = async () => {
+        try {
+          const blankTemplateRef = doc(db, 'blankGameTemplates', templateId);
+          const blankTemplateSnap = await getDoc(blankTemplateRef);
+          
+          if (blankTemplateSnap.exists()) {
+            console.log('Template is from blankGameTemplates, showing only blank templates in dropdown');
+            setShowOnlyBlankTemplates(true);
+          }
+        } catch (error) {
+          console.error('Error checking template source:', error);
+        }
+      };
+      
+      checkTemplateSource();
+    }
+  }, [templateId]);
+
+  // Load category templates from database - loads from both categoryTemplates and blankGameTemplates
   useEffect(() => {
     const fetchCategoryTemplates = async () => {
       setLoadingTemplates(true);
       try {
-        // Query the categoryTemplates collection for 'sort-categories-egg' type templates
-        const templatesQuery = query(
-          collection(db, 'categoryTemplates'),
-          where('type', '==', 'sort-categories-egg')
-        );
+        // Query both collections for templates
+        const [categoryTemplatesSnapshot, blankTemplatesSnapshot] = await Promise.all([
+          // Query the categoryTemplates collection for 'sort-categories-egg' type templates
+          getDocs(query(
+            collection(db, 'categoryTemplates'),
+            where('type', '==', 'sort-categories-egg')
+          )),
+          // Query all blankGameTemplates (without filtering by type since it might be missing)
+          getDocs(collection(db, 'blankGameTemplates'))
+        ]);
         
-        const querySnapshot = await getDocs(templatesQuery);
-        const templates: Record<string, CategoryTemplate> = {};
+        console.log('Category templates count:', categoryTemplatesSnapshot.size);
+        console.log('Blank templates count:', blankTemplatesSnapshot.size);
         
-        querySnapshot.forEach((doc) => {
+        const categoryTemplatesMap: Record<string, CategoryTemplate> = {};
+        const blankTemplatesMap: Record<string, CategoryTemplate> = {};
+        
+        // Process category templates
+        categoryTemplatesSnapshot.forEach((doc) => {
           const data = doc.data();
-          templates[doc.id] = {
+          categoryTemplatesMap[doc.id] = {
             title: data.title || 'Untitled Template',
             categories: Array.isArray(data.categories) ? data.categories : [],
             eggQty: data.eggQty || 6
           };
+          console.log('Loaded category template:', doc.id, data.title);
         });
         
+        // Process blank templates - filter for sort-categories-egg type here if needed
+        blankTemplatesSnapshot.forEach((doc) => {
+          const data = doc.data();
+          console.log('Raw blank template data:', doc.id, data);
+          
+          // Include the template if it's either sort-categories-egg type or has no type specified
+          if (!data.type || data.type === 'sort-categories-egg') {
+            blankTemplatesMap[doc.id] = {
+              title: data.title || 'Untitled Template',
+              categories: Array.isArray(data.categories) ? data.categories : [],
+              eggQty: data.eggQty || 6
+            };
+            console.log('Loaded blank template:', doc.id, data.title || 'Untitled');
+          } else {
+            console.log('Skipped blank template with incorrect type:', doc.id, data.type);
+          }
+        });
+        
+        // Store templates separately
+        setCategoryTemplates(categoryTemplatesMap);
+        setBlankTemplates(blankTemplatesMap);
+        
+        // Combine templates based on whether to show only blank templates
+        const allTemplates = showOnlyBlankTemplates 
+          ? blankTemplatesMap 
+          : {...categoryTemplatesMap, ...blankTemplatesMap};
+          
+        console.log('Total templates loaded:', Object.keys(allTemplates).length);
+        console.log('All template IDs:', Object.keys(allTemplates));
+        
         // If we found templates in the database, use those
-        if (Object.keys(templates).length > 0) {
-          setDbTemplates(templates);
+        if (Object.keys(allTemplates).length > 0) {
+          setDbTemplates(allTemplates);
           
           // Auto-select if there's only one template or if we have a URL fragment
           const fragment = window.location.hash.replace('#', '');
           
           // Check if we should auto-select a template
-          if (Object.keys(templates).length === 1) {
+          if (Object.keys(allTemplates).length === 1) {
             // If there's only one template, select it
-            const templateId = Object.keys(templates)[0];
+            const templateId = Object.keys(allTemplates)[0];
             setTemplateKey(templateId);
-            applyTemplate(templates[templateId]);
-          } else if (fragment && templates[fragment]) {
+            applyTemplate(allTemplates[templateId]);
+          } else if (fragment && allTemplates[fragment]) {
             // If URL contains a fragment matching a template ID, select it
             setTemplateKey(fragment);
-            applyTemplate(templates[fragment]);
+            applyTemplate(allTemplates[fragment]);
           }
         } else {
           // Otherwise use the default templates as fallback
@@ -580,7 +653,7 @@ const SortCategoriesEggConfig = () => {
     };
     
     fetchCategoryTemplates();
-  }, [toast]);
+  }, [toast, showOnlyBlankTemplates]);
   
   // Helper function to apply a template to the form
   const applyTemplate = (templateData: CategoryTemplate) => {
@@ -703,28 +776,100 @@ const SortCategoriesEggConfig = () => {
             setIsLoading(false);
             return;
           } else {
-            console.log(`Template ${templateId} not found in either collection`);
-            // Template not found in either collection
-            if (onError) {
-              onError("The requested configuration could not be found.");
+            // If not found in categoryTemplates, try blankGameTemplates
+            console.log(`Template ${templateId} not found in categoryTemplates, trying blankGameTemplates`);
+            const blankTemplateRef = doc(db, 'blankGameTemplates', templateId);
+            const blankTemplateSnap = await getDoc(blankTemplateRef);
+            
+            if (blankTemplateSnap.exists()) {
+              const data = blankTemplateSnap.data();
+              console.log(`Found template in blankGameTemplates:`, data);
+              
+              // Populate form fields
+              setTitle(data.title || '');
+              setEggQty(data.eggQty || 6);
+              setShareConfig(data.share || false);
+              setIsEditing(false); // Creating a new config based on blank template
+              
+              // Handle categories - Ensure we have all the data attributes we need
+              if (data.categories && Array.isArray(data.categories)) {
+                const loadedCategories = data.categories.map((cat: any) => {
+                  // Handle special case where categories might have a name/names field
+                  let catName = '';
+                  if (typeof cat.name === 'string') {
+                    catName = cat.name;
+                  } else if (typeof cat.names === 'string') {
+                    catName = cat.names;
+                  } else if (typeof cat.naems === 'string') {
+                    catName = cat.naems;
+                  } else if (cat.name && typeof cat.name === 'object' && cat.name.toString) {
+                    catName = cat.name.toString();
+                  } else {
+                    console.log('Could not determine category name, using default', cat);
+                    catName = 'Category';
+                  }
+                  
+                  // Handle special case where items might be under different field names
+                  let itemsArray: string[] = [];
+                  if (Array.isArray(cat.items)) {
+                    itemsArray = cat.items;
+                  } else if (Array.isArray(cat.words)) {
+                    itemsArray = cat.words;
+                  } else if (typeof cat.items === 'string') {
+                    itemsArray = [cat.items];
+                  } else {
+                    console.warn('No items found for category, using empty array', cat);
+                    itemsArray = [''];
+                  }
+                  
+                  // Ensure items are an array of strings
+                  const items: string[] = itemsArray.map((item: any) => {
+                    if (typeof item === 'string') return item;
+                    if (item && typeof item === 'object') {
+                      // Try to extract a string from the object
+                      if (typeof item.toString === 'function') return item.toString();
+                      if (item.name && typeof item.name === 'string') return item.name;
+                      if (item.text && typeof item.text === 'string') return item.text;
+                    }
+                    return '';
+                  }).filter(Boolean);
+                  
+                  // Ensure we have at least one empty item
+                  if (items.length === 0) {
+                    items.push('');
+                  }
+                  
+                  return { name: catName, items };
+                });
+                
+                setCategories(loadedCategories);
+              }
+              
+              setIsLoading(false);
+              return;
             } else {
-              toast({
-                title: "Configuration not found",
-                description: "The requested configuration could not be found.",
-                status: "error",
-                duration: 5000,
-              });
+              console.log(`Template ${templateId} not found in any collection`);
+              // Template not found in any collection
+              if (onError) {
+                onError("The requested configuration could not be found.");
+              } else {
+                toast({
+                  title: "Configuration not found",
+                  description: "The requested configuration could not be found.",
+                  status: "error",
+                  duration: 5000,
+                });
+              }
+              navigate('/configure/sort-categories-egg');
+              setIsLoading(false);
+              return;
             }
-            navigate('/configure/sort-categories-egg');
-            setIsLoading(false);
-            return;
           }
-        }
-        
-        // If we get here, we found the template in userGameConfigs
-        const data = gameConfigSnap.data();
-        console.log(`Found template in userGameConfigs:`, data);
-          
+        } else {
+          // If we get here, we found the template in userGameConfigs
+          const data = gameConfigSnap.data();
+          console.log(`Found template in userGameConfigs:`, data);
+            
           // Check if the user has permission to edit this config
           if (data.userId !== currentUser?.uid) {
             // If not the owner, create a copy instead of editing
@@ -746,40 +891,41 @@ const SortCategoriesEggConfig = () => {
           
           // Handle categories
           if (data.categories && Array.isArray(data.categories)) {
-          const loadedCategories = data.categories.map((cat: any) => {
-            // Ensure category name is a string
-            const name = typeof cat.name === 'string' ? cat.name : 
-                        (cat.name && typeof cat.name === 'object' && cat.name.toString) ? cat.name.toString() : '';
+            const loadedCategories = data.categories.map((cat: any) => {
+              // Ensure category name is a string
+              const name = typeof cat.name === 'string' ? cat.name : 
+                          (cat.name && typeof cat.name === 'object' && cat.name.toString) ? cat.name.toString() : '';
+              
+              // Ensure items are an array of strings
+              let items: string[] = [];
+              if (Array.isArray(cat.items)) {
+                items = cat.items.map((item: any) => {
+                  if (typeof item === 'string') return item;
+                  if (item && typeof item === 'object') {
+                    // Try to extract a string from the object
+                    if (typeof item.toString === 'function') return item.toString();
+                    if (item.name && typeof item.name === 'string') return item.name;
+                    if (item.text && typeof item.text === 'string') return item.text;
+                  }
+                  return '';
+                }).filter(Boolean);
+              } else if (typeof cat.items === 'string') {
+                items = [cat.items];
+              } else if (cat.items) {
+                console.warn('Unexpected items format:', cat.items);
+                items = [''];
+              }
+              
+              // Ensure we have at least one empty item
+              if (items.length === 0) {
+                items = [''];
+              }
+              
+              return { name, items };
+            });
             
-            // Ensure items are an array of strings
-            let items: string[] = [];
-            if (Array.isArray(cat.items)) {
-              items = cat.items.map((item: any) => {
-                if (typeof item === 'string') return item;
-                if (item && typeof item === 'object') {
-                  // Try to extract a string from the object
-                  if (typeof item.toString === 'function') return item.toString();
-                  if (item.name && typeof item.name === 'string') return item.name;
-                  if (item.text && typeof item.text === 'string') return item.text;
-                }
-                return '';
-              }).filter(Boolean);
-            } else if (typeof cat.items === 'string') {
-              items = [cat.items];
-            } else if (cat.items) {
-              console.warn('Unexpected items format:', cat.items);
-              items = [''];
-            }
-            
-            // Ensure we have at least one empty item
-            if (items.length === 0) {
-              items = [''];
-            }
-            
-            return { name, items };
-          });
-          
-          setCategories(loadedCategories);
+            setCategories(loadedCategories);
+          }
         }
       } catch (error) {
         console.error("Error loading configuration:", error);
@@ -806,10 +952,13 @@ const SortCategoriesEggConfig = () => {
   const handleTemplateChange = (template: string) => {
     setTemplateKey(template);
     
+    console.log('Selected template ID:', template);
+    
     // Check if template exists in either database templates or fallbacks
     const templateData = dbTemplates[template];
     
     if (templateData) {
+      console.log('Found template data:', templateData);
       // If this is a new config or user confirms, update title and categories
       if (!title || window.confirm("Do you want to replace the current title and categories with this preset?")) {
         // Apply the template data to the form
@@ -818,27 +967,31 @@ const SortCategoriesEggConfig = () => {
         // Update URL fragment to save the selected template for later
         window.location.hash = template;
       }
+    } else {
+      console.log('No template found with ID:', template);
     }
   };
 
   // Save the current configuration as a template in the database
   const handleSaveAsTemplate = async () => {
     if (!currentUser) {
-      toast({
-        title: "Authentication Required",
-        description: "Please sign in to save templates.",
-        status: "error",
-        duration: 5000,
-      });
+      if (onError) onError("You must be logged in to save a template");
+      return;
+    }
+    
+    if (!isAdmin && !isTeacher) {
+      if (onError) onError("You must be an admin or teacher to save templates");
       return;
     }
 
+    // Check if we have a title and at least one category with items
     if (!title.trim()) {
       toast({
-        title: "Missing Title",
-        description: "Please enter a title for your template.",
-        status: "warning",
+        title: "Error",
+        description: "Please provide a title for your template",
+        status: "error",
         duration: 5000,
+        isClosable: true,
       });
       return;
     }
@@ -1877,16 +2030,50 @@ const SortCategoriesEggConfig = () => {
                   }}
                 >
                   <option value="">Select a template (optional)</option>
-                  {Object.entries(dbTemplates).map(([key, template]) => (
-                    <option key={key} value={key}>
-                      {template.title}
-                    </option>
-                  ))}
+                  
+                  {showOnlyBlankTemplates ? (
+                    <>
+                      {/* Display blank templates only */}
+                      <optgroup label="Blank Templates">
+                        {Object.entries(blankTemplates).map(([key, template]) => (
+                          <option key={key} value={key}>
+                            {template.title}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </>
+                  ) : (
+                    <>
+                      {/* Display blank templates first */}
+                      {Object.keys(blankTemplates).length > 0 && (
+                        <optgroup label="Blank Templates">
+                          {Object.entries(blankTemplates).map(([key, template]) => (
+                            <option key={key} value={key}>
+                              {template.title}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      
+                      {/* Then display category templates */}
+                      {Object.keys(categoryTemplates).length > 0 && (
+                        <optgroup label="Category Templates">
+                          {Object.entries(categoryTemplates).map(([key, template]) => (
+                            <option key={key} value={key}>
+                              {template.title}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </>
+                  )}
                 </select>
               </Box>
             )}
             <FormHelperText>
-              Select a preset template to quickly populate the game with common categories
+              {showOnlyBlankTemplates 
+                ? "Select a blank template to use as a starting point" 
+                : "Select a preset template to quickly populate the game with common categories"}
             </FormHelperText>
           </FormControl>
 
@@ -2205,33 +2392,21 @@ const SortCategoriesEggConfig = () => {
 
         <Box className="apple-section">
           <div className="apple-section-header">
-            <Heading size="md">Templates</Heading>
+            <Text as="h2" fontSize="xl" fontWeight="semibold">Templates</Text>
           </div>
-          {isAdmin ? (
-            <FormControl mb={4}>
-              <FormLabel>Save Template</FormLabel>
-              <Button 
-                colorScheme="teal" 
-                size="md" 
-                onClick={handleSaveAsTemplate}
-                isDisabled={!currentUser || categories.length === 0}
-                mb={2}
-                width="100%"
-                className="apple-button apple-button-secondary"
-              >
-                Save as Template
-              </Button>
-              <FormControl>
-                <FormHelperText>
-                  Save your current categories as a reusable template for future games
-                </FormHelperText>
-              </FormControl>
-            </FormControl>
-          ) : (
-            <Text fontSize="sm" color="gray.500">
-              Only administrators can save templates
-            </Text>
+          
+          {(isAdmin || isTeacher) && (
+            <Button
+              width="100%"
+              mb={4}
+              onClick={handleSaveAsTemplate}
+              className="apple-button apple-button-primary"
+            >
+              Save as Template
+            </Button>
           )}
+          
+          <Text fontSize="sm">Save your current word category as a reusable template for future games</Text>
         </Box>
 
         <Box className="apple-section">
