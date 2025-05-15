@@ -1,41 +1,42 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Remove temporary overly permissive rule
+    // match /{document=**} {
+    //  allow read: if true;
+    //  allow write: if false;
+    // }
+
     // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
     
-
-    
     function isTeacher() {
-  return isAuthenticated() && 
-    exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-    request.auth.uid == resource.data.userId &&  // If checking the user's own document
-    resource.data.role == "teacher";
-}
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        request.auth.uid == resource.data.userId &&  // If checking the user's own document
+        resource.data.role == "teacher";
+    }
 
-function isAdmin() {
-  return isAuthenticated() && 
-    exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
-}
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
     
     function isTeacherOrAdmin() {
-  // Use this in non-user collections
-  return isAuthenticated() && 
-    (
-      // Check if the user has a document with their UID with teacher/admin role
-      (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-      (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "teacher" ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
-      ))
-      ||
-      // Also check if there's any document with their email that has teacher/admin role
-      (exists(/databases/$(database)/documents/users))
-    );
-}
+      // Use this in non-user collections
+      return isAuthenticated() && 
+        (
+          // Check if the user has a document with their UID with teacher/admin role
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "teacher" ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+          )
+        );
+    }
     
     // Helper function to check if request is from a service account
     function isServiceAccount() {
@@ -95,9 +96,12 @@ function isAdmin() {
       allow write: if isAdmin();
     }
     
-    // User-created game configurations
+    // User-created game configurations - CRITICAL COLLECTION
     match /userGameConfigs/{configId} {
+      // The key fix - allow all users to read documents, but implement client-side filtering
+      // This is necessary for the 'where' query to work properly
       allow read: if true;
+      
       allow create: if 
         isAuthenticated() &&
         // Basic field validation
@@ -123,32 +127,32 @@ function isAdmin() {
     }
     
     match /assignments/{assignmentId} {
-  // Read allowed for everyone - explicitly set to true for clarity
-  allow read: if true;
+      // Read allowed for everyone - explicitly set to true for clarity
+      allow read: if true;
 
-  // Allow service accounts full access
-  allow read, write: if isServiceAccount();
+      // Allow service accounts full access
+      allow read, write: if isServiceAccount();
 
-  // Teachers and Admins can create if data is valid
-  allow create: if isTeacherOrAdmin() &&
-    (!('useEmailLinkAuth' in request.resource.data) || request.resource.data.useEmailLinkAuth is bool);
+      // Teachers and Admins can create if data is valid
+      allow create: if isTeacherOrAdmin() &&
+        (!('useEmailLinkAuth' in request.resource.data) || request.resource.data.useEmailLinkAuth is bool);
 
-  // Teachers/Admins can update/delete
-  allow update, delete: if isTeacherOrAdmin();
+      // Teachers/Admins can update/delete
+      allow update, delete: if isTeacherOrAdmin();
 
-  // Allow teachers/admins full access to assign games
-  allow write: if isTeacherOrAdmin();
+      // Allow teachers/admins full access to assign games
+      allow write: if isTeacherOrAdmin();
 
-  // Allow students to update only specific fields
-  allow update: if isAuthenticated() &&
-    request.resource.data.diff(resource.data).affectedKeys()
-      .hasOnly(['status', 'completedCount', 'lastCompletedAt', 'emailSent']);
+      // Allow students to update only specific fields
+      allow update: if isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'completedCount', 'lastCompletedAt', 'emailSent']);
 
-  // Allow Firebase Functions to patch specific fields
-  allow update: if request.auth != null &&
-    request.resource.data.diff(resource.data).affectedKeys()
-      .hasOnly(['emailSent', 'useEmailLinkAuth', 'beta']);
-}
+      // Allow Firebase Functions to patch specific fields
+      allow update: if request.auth != null &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['emailSent', 'useEmailLinkAuth', 'beta']);
+    }
 
     
     // Attempts collection - track student game attempts
@@ -165,25 +169,25 @@ function isAdmin() {
     
     
     // Users collection
-match /users/{userId} {
-  // Explicitly allow authenticated users to read their own document unconditionally
-  // This is critical for role-checking functions to work
-  allow read: if request.auth != null && request.auth.uid == userId;
-  
-  // Allow public read access as before
-  allow read: if true;
-  
-  // New permission model:
-  // 1. Allow admins to perform any operations on any user document
-  // 2. Allow users to create their own document (for new accounts and linking Google Auth)
-  // 3. Allow users to update their own document BUT not change their role
-  allow create: if isAdmin() || request.auth.uid == userId;
-  allow delete: if isAdmin();
-  allow update: if isAdmin() || 
-    (request.auth.uid == userId && 
-     // Users can't change their own role
-     request.resource.data.role == resource.data.role);
-}
+    match /users/{userId} {
+      // Explicitly allow authenticated users to read their own document unconditionally
+      // This is critical for role-checking functions to work
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow public read access as before
+      allow read: if true;
+      
+      // New permission model:
+      // 1. Allow admins to perform any operations on any user document
+      // 2. Allow users to create their own document (for new accounts and linking Google Auth)
+      // 3. Allow users to update their own document BUT not change their role
+      allow create: if isAdmin() || request.auth.uid == userId;
+      allow delete: if isAdmin();
+      allow update: if isAdmin() || 
+        (request.auth.uid == userId && 
+         // Users can't change their own role
+         request.resource.data.role == resource.data.role);
+    }
     
     // Sort Categories Egg collection
     match /sortCategoriesEgg/{configId} {
@@ -202,7 +206,8 @@ match /users/{userId} {
     // Category Templates collection
     match /categoryTemplates/{templateId} {
       // Allow teachers and admins to read and write category templates
-      allow read, write: if isTeacherOrAdmin();
+      allow read: if isTeacherOrAdmin();
+      allow write: if isTeacherOrAdmin();
     }
 
     // Assignment tokens collection
